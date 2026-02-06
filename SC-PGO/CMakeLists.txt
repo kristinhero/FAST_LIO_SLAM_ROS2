@@ -16,8 +16,10 @@ find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(pcl_conversions REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 #find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
@@ -44,22 +46,22 @@ include_directories(
 ament_package()
 
 add_executable(ascanRegistration src/scanRegistration.cpp)
-ament_target_dependencies(ascanRegistration rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs)
+ament_target_dependencies(ascanRegistration rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs pcl_conversions tf2_ros)
 target_link_libraries(ascanRegistration ${PCL_LIBRARIES})
 
 add_executable(alaserOdometry src/laserOdometry.cpp)
-ament_target_dependencies(alaserOdometry rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs)
+ament_target_dependencies(alaserOdometry rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs pcl_conversions tf2_ros)
 target_link_libraries(alaserOdometry ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 
 add_executable(alaserMapping src/laserMapping.cpp)
-ament_target_dependencies(alaserMapping rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs tf2 tf2_ros)
+ament_target_dependencies(alaserMapping rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs tf2 tf2_ros pcl_conversions)
 target_link_libraries(alaserMapping ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 
 add_executable(alaserPGO 
   src/laserPosegraphOptimization.cpp
   include/scancontext/Scancontext.cpp
 )
-ament_target_dependencies(alaserPGO rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs tf2 tf2_ros)
+ament_target_dependencies(alaserPGO rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs tf2 tf2_ros tf2_geometry_msgs cv_bridge pcl_conversions)
 target_compile_options(alaserPGO 
   PRIVATE ${OpenMP_CXX_FLAGS}
 )
