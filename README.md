@@ -1,7 +1,8 @@
 # FAST_LIO_SLAM
 
-## News
--  ``Aug 2021``: The Livox-lidar tests and corresponding launch files will be uploaded soon. Currenty only Ouster lidar tutorial videos had been made. 
+- Original FAST_LIO_SLAM at [FAST_LIO_SLAM](https://github.com/gisbi-kim/FAST_LIO_SLAM)
+- This repository is forked from [FAST_LIO_SLAM_ros2](https://github.com/rohrschacht/FAST_LIO_SLAM_ros2) for porting to ROS2
+- FAST_LIO_ROS2 code is copied from [Ericsii/FAST_LIO_ROS2](https://github.com/Ericsii/FAST_LIO_ROS2) for porting to ROS2 and changing from livox_ros_driver to livox_ros_driver2
 
 ## What is FAST_LIO_SLAM?
 Integration of 
@@ -14,27 +15,36 @@ Integration of
     - SC-PGO takes odometry and lidar point cloud topics from the FAST-LIO2 node. 
     - Finally, an optimized map is made within the SC-PGO node. 
 
+## Dependencies
+### **Ubuntu** and **ROS**
+**Ubuntu >= 20.04**
+This repository is tested on Ubuntu 22.04 (Jammy)
+
+ROS >= Foxy (Recommend to use ROS-Humble). [ROS Installation](https://docs.ros.org/en/humble/Installation.html)
+
+### **PCL && Eigen**
+PCL    >= 1.8,   Follow [PCL Installation](https://pointclouds.org/downloads/#linux).
+
+Eigen  >= 3.3.4, Follow [Eigen Installation](http://eigen.tuxfamily.org/index.php?title=Main_Page).
+
+### **livox_ros_driver2**
+Follow [livox_ros_driver2 Installation](https://github.com/Livox-SDK/livox_ros_driver2).
+
+*Remarks:*
+- Since the FAST-LIO must support Livox serials LiDAR firstly, so the **livox_ros_driver2** must be installed and **sourced** before running any FAST-LIO launch file.
+### Ceres Solver and GTSAM for Scan-Context Pose Graph Optimization
+
 ## How to use?
-- The below commands and the launch files are made for playing the [MulRan dataset](https://sites.google.com/view/mulran-pr/home), but applicable for livox lidars in the same way (you could easily make your own launch files).
-```
-    # terminal 1: run FAST-LIO2 
-    mkdir -p ~/catkin_fastlio_slam/src
-    cd ~/catkin_fastlio_slam/src
-    git clone https://github.com/gisbi-kim/FAST_LIO_SLAM.git
-    git clone https://github.com/Livox-SDK/livox_ros_driver
-    cd .. 
-    catkin_make
-    source devel/setup.bash
-    roslaunch fast_lio mapping_ouster64_mulran.launch # setting for MulRan dataset 
+Clone the repository and colcon build:
 
-    # open the other terminal tab: run SC-PGO
-    cd ~/catkin_fastlio_slam
-    source devel/setup.bash
-    roslaunch aloam_velodyne fastlio_ouster64.launch # setting for MulRan dataset 
-
-    # open the other terminal tab
-    # run file_player_mulran (for the details, refer here https://github.com/irapkaist/file_player_mulran)
+```bash
+    cd <ros2_ws>/src # cd into a ros2 workspace folder
+    git clone https://github.com/kristinhero/FAST_LIO_SLAM_ROS2.git
+    cd ..
+    rosdep install --from-paths src --ignore-src -y
+    colcon build --symlink-install
 ```
+- **Remember to source the livox_ros_driver before build**
 
 ## Utility
 - We support keyframe scan saver (as in .pcd) and provide a script reconstructs a point cloud map by merging the saved scans using the optimized poses. See [here](https://github.com/gisbi-kim/FAST_LIO_SLAM/blob/bf975560741c425f71811c864af5d35aa880c797/SC-PGO/utils/python/makeMergedMap.py#L7).
