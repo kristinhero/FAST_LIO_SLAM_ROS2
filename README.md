@@ -35,16 +35,24 @@ Follow [livox_ros_driver2 Installation](https://github.com/Livox-SDK/livox_ros_d
 ### Ceres Solver and GTSAM for Scan-Context Pose Graph Optimization
 
 ## How to use?
-Clone the repository and colcon build:
+### Clone the repository and colcon build:
 
 ```bash
     cd <ros2_ws>/src # cd into a ros2 workspace folder
     git clone https://github.com/kristinhero/FAST_LIO_SLAM_ROS2.git
     cd ..
+    source ~/ws_livox/install/setup.bash
     rosdep install --from-paths src --ignore-src -y
     colcon build --symlink-install
 ```
 - **Remember to source the livox_ros_driver before build**
+### Running FAST-LIO
+```bash
+    cd <ros2_ws> # cd into a ros2 workspace folder
+    source ~/ws_livox/install/setup.bash
+    . ./install/setup.bash
+    ros2 launch fast_lio mapping.launch.py config_file:=mid360.yaml
+```
 
 ## Utility
 - We support keyframe scan saver (as in .pcd) and provide a script reconstructs a point cloud map by merging the saved scans using the optimized poses. See [here](https://github.com/gisbi-kim/FAST_LIO_SLAM/blob/bf975560741c425f71811c864af5d35aa880c797/SC-PGO/utils/python/makeMergedMap.py#L7).
