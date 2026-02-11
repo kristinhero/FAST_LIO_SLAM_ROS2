@@ -46,9 +46,15 @@ Follow [livox_ros_driver2 Installation](https://github.com/Livox-SDK/livox_ros_d
     colcon build --symlink-install
 ```
 - **Remember to source the livox_ros_driver before build**
-### Running FAST-LIO
+### Run IMU-converter for Livox MID-360
 ```bash
-    cd <ros2_ws> # cd into a ros2 workspace folder
+    cd <ros2_ws>
+    source /install/setup.bash
+    ros2 run imu_unit_converter imu_unit_converter
+```
+### Run FAST-LIO in a separate terminal
+```bash
+    cd <ros2_ws>
     source ~/ws_livox/install/setup.bash
     . ./install/setup.bash
     ros2 launch fast_lio mapping.launch.py config_file:=mid360.yaml

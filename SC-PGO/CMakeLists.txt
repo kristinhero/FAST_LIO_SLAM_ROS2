@@ -71,6 +71,15 @@ target_link_libraries(alaserPGO
   gtsam
 )
 
+install(TARGETS
+  alaserPGO
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 # add_executable(kittiHelper src/kittiHelper.cpp)
 # ament_target_dependencies(kittiHelper rclcpp rclpy std_msgs geometry_msgs nav_msgs sensor_msgs)
 # target_link_libraries(kittiHelper ${PCL_LIBRARIES} ${OpenCV_LIBS})
