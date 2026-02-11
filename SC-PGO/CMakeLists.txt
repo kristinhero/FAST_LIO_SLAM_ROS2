@@ -77,7 +77,7 @@ install(TARGETS
 )
 
 install(
-  DIRECTORY launch
+  DIRECTORY launch rviz_cfg
   DESTINATION share/${PROJECT_NAME}
 )
 # add_executable(kittiHelper src/kittiHelper.cpp)

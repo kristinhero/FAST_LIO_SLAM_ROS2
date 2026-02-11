@@ -29,7 +29,7 @@ def generate_launch_description():
     'sc_dist_thres': 0.3,
     'sc_max_radius': 80.0,
     'lidar_type': 'MID-360',
-    'save_directory': '/home/aidit/ws_slam/src/FAST_LIO_SLAM_ROS2/SC-PGO/PCD/'
+    'save_directory': '/home/aidit/ws_slam/src/FAST_LIO_SLAM_ROS2/SC-PGO/PCD/' # Change this to your desired save directory for point clouds
 }
 
     # --- Remappings from FAST-LIO outputs ---
