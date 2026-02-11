@@ -2,4 +2,4 @@ build
 .vscode/c_cpp_properties.json
 .vscode/settings.json
 *.pyc
-*.pcd
+SC-PGO/PCD/Scans/*.pcd
