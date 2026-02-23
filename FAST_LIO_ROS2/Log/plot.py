@@ -6,12 +6,24 @@ import matplotlib.pyplot as plt
 
 #######for ikfom
 fig, axs = plt.subplots(4,2)
+plt.subplots_adjust(hspace=0.35)
 lab_pre = ['', 'pre-x', 'pre-y', 'pre-z']
 lab_out = ['', 'out-x', 'out-y', 'out-z']
 plot_ind = range(7,10)
+# a_pre=np.loadtxt('Log_failure/mat_pre_ext_enable_fail.txt')
+# a_out=np.loadtxt('Log_failure/mat_out_ext_enable_fail.txt')
 a_pre=np.loadtxt('mat_pre.txt')
 a_out=np.loadtxt('mat_out.txt')
 time=a_pre[:,0]
+
+# Filter data to plot only from 110 to 190 seconds
+start_time = 110
+end_time = 190
+# mask = (time >= start_time) & (time <= end_time)
+mask = (time >= start_time) # Plot only after 110 seconds
+a_pre = a_pre[mask]
+a_out = a_out[mask]
+time = time[mask]
 axs[0,0].set_title('Attitude')
 axs[1,0].set_title('Translation')
 axs[2,0].set_title('Extrins-R')
@@ -22,12 +34,12 @@ axs[2,1].set_title('ba')
 axs[3,1].set_title('Gravity')
 for i in range(1,4):
     for j in range(8):
-        axs[j%4, j/4].plot(time, a_pre[:,i+j*3],'.-', label=lab_pre[i])
-        axs[j%4, j/4].plot(time, a_out[:,i+j*3],'.-', label=lab_out[i])
+        axs[j%4, j//4].plot(time, a_pre[:,i+j*3],'-', label=lab_pre[i])
+        axs[j%4, j//4].plot(time, a_out[:,i+j*3],'-', label=lab_out[i])
 for j in range(8):
     # axs[j].set_xlim(386,389)
-    axs[j%4, j/4].grid()
-    axs[j%4, j/4].legend()
+    axs[j%4, j//4].grid()
+    axs[j%4, j//4].legend()
 plt.grid()
 #######for ikfom#######
 
@@ -91,4 +103,5 @@ plt.grid()
 # # # print(a_out3[:,2])
 # plt.grid()
 # plt.savefig("time.pdf", dpi=1200)
+plt.tight_layout()
 plt.show()
