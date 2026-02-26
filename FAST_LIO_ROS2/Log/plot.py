@@ -44,7 +44,7 @@ plt.grid()
 #######for ikfom#######
 
 
-#### Draw IMU data
+# ### Draw IMU data
 # fig, axs = plt.subplots(2)
 # imu=np.loadtxt('imu.txt')
 # time=imu[:,0]
@@ -101,7 +101,43 @@ plt.grid()
 # plt.xticks([1,2,3], ('Outdoor Scene', 'Indoor Scene 1', 'Indoor Scene 2'))
 # # # print(time_se)
 # # # print(a_out3[:,2])
-# plt.grid()
-# plt.savefig("time.pdf", dpi=1200)
+# # plt.grid()
+# # plt.savefig("time.pdf", dpi=1200)
+
+# Plot covariance diagonals from pos_log.txt if available
+try:
+    pos = np.loadtxt('pos_log.txt')
+    if pos.ndim == 1:
+        pos = pos.reshape(1, -1)
+    # pos columns: 0..24 state fields, then 36 covariance values (row-major 6x6)
+    if pos.shape[1] >= 25 + 36:
+        time_pos = pos[:, 0]
+        # apply same time filter used above (use end_time if defined)
+        # mask_pos = (time_pos >= start_time) & (time_pos <= end_time)
+        mask_pos = (time_pos >= start_time)
+
+        cov_flat = pos[mask_pos, 25:25+36]
+        if cov_flat.size > 0:
+            cov = cov_flat.reshape(-1, 6, 6)
+            # diagonal elements (following printed row-major order)
+            diag = np.array([cov[:, i, i] for i in range(6)])
+            fig2, ax2 = plt.subplots(2,3, figsize=(12,6))
+            ax2 = ax2.ravel()
+            labels = ['cov_x','cov_y','cov_z','cov_roll','cov_pitch','cov_yaw']
+            t_cov = time_pos[mask_pos]
+            for i in range(6):
+                ax2[i].plot(t_cov, diag[i], '-', label=labels[i])
+                ax2[i].set_title(labels[i])
+                ax2[i].grid()
+                ax2[i].legend()
+            fig2.suptitle('Pose covariance diagonals')
+            plt.tight_layout()
+        else:
+            print('No covariance data found in Log/pos_log.txt for the requested time range.')
+    else:
+        print('Log/pos_log.txt does not contain covariance columns (need >=61 columns per line).')
+except Exception as e:
+    print('Could not load Log/pos_log.txt:', e)
+
 plt.tight_layout()
 plt.show()

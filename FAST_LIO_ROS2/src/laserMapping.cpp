@@ -162,8 +162,17 @@ inline void dump_lio_state_to_log(FILE *fp)
     fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc  
     fprintf(fp, "%lf %lf %lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g  
     fprintf(fp, "%lf %lf %lf ", state_point.ba(0), state_point.ba(1), state_point.ba(2));    // Bias_a  
-    fprintf(fp, "%lf %lf %lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // Bias_a  
-    fprintf(fp, "\r\n");  
+    fprintf(fp, "%lf %lf %lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // Gravity
+    // Append 6x6 pose covariance (row-major) using same mapping as publish_odometry
+    // odom.pose.covariance[i*6 + j] is filled from P(k, ...)
+    auto P = kf.get_P();
+    for (int i = 0; i < 6; i++)
+    {
+        int k = i < 3 ? i + 3 : i - 3;
+        fprintf(fp, "%lf %lf %lf %lf %lf %lf ",
+                P(k, 3), P(k, 4), P(k, 5), P(k, 0), P(k, 1), P(k, 2));
+    }
+    fprintf(fp, "\r\n");
     fflush(fp);
 }
 
