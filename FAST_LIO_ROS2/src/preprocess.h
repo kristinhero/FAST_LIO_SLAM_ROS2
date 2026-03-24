@@ -131,6 +131,16 @@ typedef struct {
   uint8_t tag;        /**< Livox point tag   */
   uint8_t line;       /**< Laser line id     */
 } LivoxPointXyzitl;
+// New struct for saving timestamp, used in mid360 lidar with pointcloud2 output
+struct LivoxPointXYZITLT
+{
+  PCL_ADD_POINT4D;
+  float intensity;
+  uint8_t tag;
+  uint8_t line;
+  double timestamp;   
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
 }
 POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::LivoxPointXyzrtl,
     (float, x, x)
@@ -148,6 +158,15 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::LivoxPointXyzitl,
     (float, intensity, intensity)
     (uint8_t, tag, tag)
     (uint8_t, line, line)
+)
+POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::LivoxPointXYZITLT,
+  (float, x, x)
+  (float, y, y)
+  (float, z, z)
+  (float, intensity, intensity)
+  (uint8_t, tag, tag)
+  (uint8_t, line, line)
+  (double, timestamp, timestamp)
 )
 
 class Preprocess

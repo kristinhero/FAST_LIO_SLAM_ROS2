@@ -479,36 +479,37 @@ void Preprocess::mid360_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &
   pl_corn.clear();
   pl_full.clear();
 
-  pcl::PointCloud<livox_ros::LivoxPointXyzitl> pl_orig;
+  pcl::PointCloud<livox_ros::LivoxPointXYZITLT> pl_orig;
   pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.points.size();
   if (plsize == 0)
+  {
+    printf("Error: Empty point cloud received! Please check your LiDAR data and ensure that the point cloud message contains valid points.\n");
     return;
+  }
+  // Sort points by timestamp to ensure correct time ordering
+  std::sort(pl_orig.points.begin(), pl_orig.points.end(),
+          [](const auto &a, const auto &b)
+          {
+              return a.timestamp < b.timestamp;
+          });
   pl_surf.reserve(plsize);
 
-  /*** These variables only works when no point timestamps given ***/
-  double omega_l = 0.361 * SCAN_RATE;  // scan angular velocity
-  std::vector<bool> is_first(N_SCANS, true);
-  std::vector<double> yaw_fp(N_SCANS, 0.0);    // yaw of first scan point
-  std::vector<float> yaw_last(N_SCANS, 0.0);   // yaw of last scan point
-  std::vector<float> time_last(N_SCANS, 0.0);  // last offset time
-  /*****************************************************************/
-
-  given_offset_time = false;
-  double yaw_first = atan2(pl_orig.points[0].y, pl_orig.points[0].x) * 57.29578;
-  double yaw_end = yaw_first;
-  int layer_first = pl_orig.points[0].line;
-  for (uint i = plsize - 1; i > 0; i--)
+  double t0 = pl_orig.points[0].timestamp;
+  if(t0 == 0)
   {
-    if (pl_orig.points[i].line == layer_first)
-    {
-      yaw_end = atan2(pl_orig.points[i].y, pl_orig.points[i].x) * 57.29578;
-      break;
-    }
+    printf("Error: No timestamp in point cloud! Please check your LiDAR data and ensure that the timestamp is correctly included.\n");
+    return;
   }
-
+  double t_end = pl_orig.points[plsize - 1].timestamp;
+  printf("t0: %.0f, t_end: %.0f, duration(ms): %.3f\n",
+       t0, t_end, (t_end - t0) * 1e-6);
   for (uint i = 0; i < plsize; ++i)
   {
+    if (i % point_filter_num != 0)
+    {
+      continue;
+    }
     PointType added_pt;
     added_pt.normal_x = 0;
     added_pt.normal_y = 0;
@@ -517,39 +518,13 @@ void Preprocess::mid360_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &
     added_pt.y = pl_orig.points[i].y;
     added_pt.z = pl_orig.points[i].z;
     added_pt.intensity = pl_orig.points[i].intensity;
-    added_pt.curvature = 0.;
 
-    int layer = pl_orig.points[i].line;
-    double yaw_angle = atan2(added_pt.y, added_pt.x) * 57.2957;
+    double rel_time = (pl_orig.points[i].timestamp - t0);
 
-    if (is_first[layer])
-    {
-      // printf("layer: %d; is first: %d", layer, is_first[layer]);
-      yaw_fp[layer] = yaw_angle;
-      is_first[layer] = false;
-      added_pt.curvature = 0.0;
-      yaw_last[layer] = yaw_angle;
-      time_last[layer] = added_pt.curvature;
-      continue;
-    }
+    added_pt.curvature = rel_time*time_unit_scale;  // use relative time of each laser point as curvature, curvature unit: ms
+    //printf("timestamp: %lf, rel_time: %lf, curvature: %lf\n", pl_orig.points[i].timestamp, rel_time, added_pt.curvature);
 
-    // compute offset time
-    if (yaw_angle <= yaw_fp[layer])
-    {
-      added_pt.curvature = (yaw_fp[layer] - yaw_angle) / omega_l;
-    }
-    else
-    {
-      added_pt.curvature = (yaw_fp[layer] - yaw_angle + 360.0) / omega_l;
-    }
-
-    if (added_pt.curvature < time_last[layer])
-      added_pt.curvature += 360.0 / omega_l;
-
-    yaw_last[layer] = yaw_angle;
-    time_last[layer] = added_pt.curvature;
-
-    if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind * blind))
+    if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind * blind)) // filter points that are too close
     {
       pl_surf.push_back(std::move(added_pt));
     }
