@@ -502,8 +502,6 @@ void Preprocess::mid360_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &
     return;
   }
   double t_end = pl_orig.points[plsize - 1].timestamp;
-  printf("t0: %.0f, t_end: %.0f, duration(ms): %.3f\n",
-       t0, t_end, (t_end - t0) * 1e-6);
   for (uint i = 0; i < plsize; ++i)
   {
     if (i % point_filter_num != 0)
@@ -522,7 +520,6 @@ void Preprocess::mid360_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &
     double rel_time = (pl_orig.points[i].timestamp - t0);
 
     added_pt.curvature = rel_time*time_unit_scale;  // use relative time of each laser point as curvature, curvature unit: ms
-    //printf("timestamp: %lf, rel_time: %lf, curvature: %lf\n", pl_orig.points[i].timestamp, rel_time, added_pt.curvature);
 
     if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > (blind * blind)) // filter points that are too close
     {

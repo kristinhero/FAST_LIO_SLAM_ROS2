@@ -33,6 +33,7 @@ Follow [livox_ros_driver2 Installation](https://github.com/Livox-SDK/livox_ros_d
 *Remarks:*
 - Since the FAST-LIO must support Livox serials LiDAR firstly, so the **livox_ros_driver2** must be installed and **sourced** before running any FAST-LIO launch file.
 ### Ceres Solver and GTSAM for Scan-Context Pose Graph Optimization
+Important for SC-PGO
 
 ## How to use?
 ### Clone the repository and colcon build:
@@ -46,19 +47,27 @@ Follow [livox_ros_driver2 Installation](https://github.com/Livox-SDK/livox_ros_d
     colcon build --symlink-install
 ```
 - **Remember to source the livox_ros_driver before build**
-### Run IMU-converter for Livox MID-360
+### Run with ROS bag
+#### Run IMU-converter for Livox MID-360
 ```bash
     cd <ros2_ws>
-    source /install/setup.bash
+    source install/setup.bash
     ros2 run imu_unit_converter imu_unit_converter
 ```
-### Run FAST-LIO in a separate terminal
+#### Run FAST-LIO in a separate terminal
 ```bash
     cd <ros2_ws>
     source ~/ws_livox/install/setup.bash
     . ./install/setup.bash
     ros2 launch fast_lio mapping.launch.py config_file:=mid360.yaml
 ```
+#### Play ROS bag with Livox Data
+```bash
+    cd <bag_folder>
+    ros2 bag play <your_bag>.mcap --read-aead-queue-size 5000
+```
+Note: FAST-LIO is sensitive to jittery messages, so it is important that the message queue 
+Important: The current configuration file mid360.yaml is compatible with Livox ROS Driver 2 message type 0, Pointcloud2 messages of type PointXYZRTLT. If the custom Livox message is used, it should be compatible with lidar type 1 but this has not been tested in this repo. 
 
 ## Utility
 - We support keyframe scan saver (as in .pcd) and provide a script reconstructs a point cloud map by merging the saved scans using the optimized poses. See [here](https://github.com/gisbi-kim/FAST_LIO_SLAM/blob/bf975560741c425f71811c864af5d35aa880c797/SC-PGO/utils/python/makeMergedMap.py#L7).
