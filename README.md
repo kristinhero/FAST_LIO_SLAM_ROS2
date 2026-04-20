@@ -66,7 +66,8 @@ Important for SC-PGO
     cd <bag_folder>
     ros2 bag play <your_bag>.mcap --read-aead-queue-size 5000
 ```
-Note: FAST-LIO is sensitive to jittery messages, so it is important that the message queue 
+Note: FAST-LIO is sensitive to jittery messages, so it is important that the message queue is not starved
+
 Important: The current configuration file mid360.yaml is compatible with Livox ROS Driver 2 message type 0, Pointcloud2 messages of type PointXYZRTLT. If the custom Livox message is used, it should be compatible with lidar type 1 but this has not been tested in this repo. 
 
 ## Utility
