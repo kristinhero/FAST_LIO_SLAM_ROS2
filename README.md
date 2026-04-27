@@ -48,12 +48,6 @@ Important for SC-PGO
 ```
 - **Remember to source the livox_ros_driver before build**
 ### Run with ROS bag
-#### Run IMU-converter for Livox MID-360
-```bash
-    cd <ros2_ws>
-    source install/setup.bash
-    ros2 run imu_unit_converter imu_unit_converter
-```
 #### Run FAST-LIO in a separate terminal
 ```bash
     cd <ros2_ws>
