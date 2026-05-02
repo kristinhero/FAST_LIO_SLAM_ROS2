@@ -3,7 +3,7 @@ import subprocess
 import os
 
 # Path to your PCD files
-path = "/home/aidit/ws_slam/src/FAST_LIO_SLAM_ROS2/FAST_LIO_ROS2/PCD/square_tank_slow"
+path = "/home/aidit/ws_slam/src/FAST_LIO_SLAM_ROS2/FAST_LIO_ROS2/PCD/square_tank_fast"
 pcd_files = sorted(glob.glob(os.path.join(path, "scans_*.pcd")))
 
 if not pcd_files:

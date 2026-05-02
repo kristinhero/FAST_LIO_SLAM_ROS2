@@ -33,6 +33,7 @@
             fov_degree:    360.0
             det_range:     100.0
             extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
+            debug_scan_en: true          # true: save local map + per-iteration costs at DEBUG_TIME_START/END
             extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
             extrinsic_R: [ 1., 0., 0.,
                             0., 1., 0.,

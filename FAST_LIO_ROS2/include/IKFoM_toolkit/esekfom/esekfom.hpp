@@ -1624,11 +1624,13 @@ public:
 		int t = 0;
 		state x_propagated = x_;
 		cov P_propagated = P_;
-		int dof_Measurement; 
-		
+		int dof_Measurement;
+
 		Matrix<scalar_type, n, 1> K_h;
-		Matrix<scalar_type, n, n> K_x; 
-		
+		Matrix<scalar_type, n, n> K_x;
+
+		iter_max_dx_.clear();
+		stopped_by_convergence_ = false;
 		vectorized_state dx_new = vectorized_state::Zero();
 		for(int i=-1; i<maximum_iter; i++)
 		{
@@ -1812,7 +1814,8 @@ public:
 			}
 
 			//K_x = K_ * h_x_;
-			Matrix<scalar_type, n, 1> dx_ = K_h + (K_x - Matrix<scalar_type, n, n>::Identity()) * dx_new; 
+			Matrix<scalar_type, n, 1> dx_ = K_h + (K_x - Matrix<scalar_type, n, n>::Identity()) * dx_new;
+			iter_max_dx_.push_back(dx_.cwiseAbs().maxCoeff());
 			state x_before = x_;
 			x_.boxplus(dx_);
 			dyn_share.converge = true;
@@ -1825,7 +1828,7 @@ public:
 				}
 			}
 			if(dyn_share.converge) t++;
-			
+
 			if(!t && i == maximum_iter - 2)
 			{
 				dyn_share.converge = true;
@@ -1833,6 +1836,7 @@ public:
 
 			if(t > 1 || i == maximum_iter - 1)
 			{
+				stopped_by_convergence_ = (t > 1);
 				L_ = P_;
 				//std::cout << "iteration time" << t << "," << i << std::endl; 
 				Matrix<scalar_type, 3, 3> res_temp_SO3;
@@ -1952,7 +1956,11 @@ public:
 	const cov& get_P() const {
 		return P_;
 	}
+	const std::vector<double>& get_iter_max_dx() const { return iter_max_dx_; }
+	bool get_stopped_by_convergence() const { return stopped_by_convergence_; }
 private:
+	std::vector<double> iter_max_dx_;
+	bool stopped_by_convergence_ = false;
 	state x_;
 	measurement m_;
 	cov P_;

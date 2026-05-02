@@ -4,6 +4,7 @@ Log/*.txt
 Log/*.csv
 Log/*.pdf
 Log/Log*
+Log/old_logs/*
 .vscode/c_cpp_properties.json
 .vscode/settings.json
 PCD/*.pcd

@@ -98,6 +98,14 @@ bool   point_selected_surf[100000] = {0};
 bool   lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 MatrixXd last_H_pose;   // most recent h_share_model call: n×6 pose (pos+rot) columns of H
 VectorXd last_residuals; // most recent h_share_model call: point-to-plane residuals
+
+// Debug: per-iteration cost collection and local map save
+// Edit these two values to target a different time window
+static constexpr double DEBUG_TIME_START = 235.25;
+static constexpr double DEBUG_TIME_END   = 235.35;
+bool              debug_scan_en     = false;  // toggled via YAML mapping.debug_scan_en
+bool              debug_scan_active = false;
+vector<double>    iter_costs_debug;
 bool   scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 bool    is_first_lidar = true;
 bool   imu_unit_g = false;
@@ -824,6 +832,9 @@ void h_share_model(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_
 
     last_H_pose   = ekfom_data.h_x.leftCols(6);
     last_residuals = ekfom_data.h;
+
+    if (debug_scan_active)
+        iter_costs_debug.push_back(ekfom_data.h.squaredNorm());
 }
 
 class LaserMappingNode : public rclcpp::Node
@@ -864,6 +875,7 @@ public:
         this->declare_parameter<bool>("runtime_pos_log_enable", false);
         this->declare_parameter<bool>("common.lidar_reliable_qos", false);
         this->declare_parameter<bool>("mapping.extrinsic_est_en", true);
+        this->declare_parameter<bool>("mapping.debug_scan_en", false);
         this->declare_parameter<bool>("pcd_save.pcd_save_en", false);
         this->declare_parameter<int>("pcd_save.interval", -1);
         this->declare_parameter<vector<double>>("mapping.extrinsic_T", vector<double>());
@@ -902,6 +914,7 @@ public:
         this->get_parameter_or<bool>("runtime_pos_log_enable", runtime_pos_log, 0);
         this->get_parameter_or<bool>("common.lidar_reliable_qos", lidar_reliable_qos, false);
         this->get_parameter_or<bool>("mapping.extrinsic_est_en", extrinsic_est_en, true);
+        this->get_parameter_or<bool>("mapping.debug_scan_en", debug_scan_en, false);
         this->get_parameter_or<bool>("pcd_save.pcd_save_en", pcd_save_en, false);
         this->get_parameter_or<int>("pcd_save.interval", pcd_save_interval, -1);
         this->get_parameter_or<vector<double>>("mapping.extrinsic_T", extrinT, vector<double>());
@@ -1087,6 +1100,29 @@ private:
             /*** iterated state estimation ***/
             double t_update_start = omp_get_wtime();
             double solve_H_time = 0;
+            double rel_time_cur = Measures.lidar_beg_time - first_lidar_time;
+            debug_scan_active = debug_scan_en &&
+                                (rel_time_cur >= DEBUG_TIME_START && rel_time_cur <= DEBUG_TIME_END);
+            PointCloudXYZI::Ptr scan_pre_iekf(new PointCloudXYZI);
+            if (debug_scan_active)
+            {
+                iter_costs_debug.clear();
+                // Capture input scan in world frame using the propagated (pre-IEKF) state
+                state_ikfom prop_state = kf.get_x();
+                scan_pre_iekf->resize(feats_down_size);
+                for (int i = 0; i < feats_down_size; i++)
+                {
+                    V3D pb(feats_down_body->points[i].x,
+                           feats_down_body->points[i].y,
+                           feats_down_body->points[i].z);
+                    V3D pw = prop_state.rot * (prop_state.offset_R_L_I * pb + prop_state.offset_T_L_I)
+                             + prop_state.pos;
+                    scan_pre_iekf->points[i]   = feats_down_body->points[i];
+                    scan_pre_iekf->points[i].x = pw(0);
+                    scan_pre_iekf->points[i].y = pw(1);
+                    scan_pre_iekf->points[i].z = pw(2);
+                }
+            }
             kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
             state_point = kf.get_x();
             euler_cur = SO3ToEuler(state_point.rot);
@@ -1100,6 +1136,101 @@ private:
 
             /******* Publish odometry *******/
             publish_odometry(pubOdomAftMapped_, tf_broadcaster_);
+
+            /*** Debug dump: iter costs + local map (before map is updated) ***/
+            if (debug_scan_active)
+            {
+                debug_scan_active = false;
+
+                // Log per-iteration costs and max-dx to file
+                const auto &max_dx = kf.get_iter_max_dx();
+                bool by_conv = kf.get_stopped_by_convergence();
+                string iter_log_path = string(ROOT_DIR) + "Log/debug_iter_costs.txt";
+                FILE *fp_iter = fopen(iter_log_path.c_str(), "a");
+                if (fp_iter)
+                {
+                    fprintf(fp_iter, "%.9f %d", rel_time_cur, by_conv ? 1 : 0);
+                    for (double c : iter_costs_debug) fprintf(fp_iter, " %.6f", c);
+                    fprintf(fp_iter, " |");
+                    for (double d : max_dx)            fprintf(fp_iter, " %.6f", d);
+                    fprintf(fp_iter, "\n");
+                    fclose(fp_iter);
+                }
+                printf("[DEBUG] t=%.6f  %d iters  stop=%s  limit=0.001\n",
+                       rel_time_cur, (int)iter_costs_debug.size(),
+                       by_conv ? "converged" : "max_iter");
+                printf("[DEBUG]  costs  :");
+                for (double c : iter_costs_debug) printf(" %8.3f", c);
+                printf("\n[DEBUG]  max|dx|:");
+                for (double d : max_dx)            printf(" %8.5f", d);
+                printf("\n");
+
+                // Save local map from ikd-tree (BEFORE map_incremental adds this scan)
+                PointVector local_map_pts;
+                BoxPointType local_box;
+                float map_radius = 50.0f;
+                local_box.vertex_min[0] = state_point.pos[0] - map_radius;
+                local_box.vertex_min[1] = state_point.pos[1] - map_radius;
+                local_box.vertex_min[2] = state_point.pos[2] - map_radius;
+                local_box.vertex_max[0] = state_point.pos[0] + map_radius;
+                local_box.vertex_max[1] = state_point.pos[1] + map_radius;
+                local_box.vertex_max[2] = state_point.pos[2] + map_radius;
+                ikdtree.Box_Search(local_box, local_map_pts);
+                PointCloudXYZI::Ptr map_cloud(new PointCloudXYZI);
+                map_cloud->reserve(local_map_pts.size());
+                for (auto &p : local_map_pts) map_cloud->push_back(p);
+                string map_path = string(ROOT_DIR) + "Log/debug_map_" + to_string(rel_time_cur) + ".pcd";
+                pcl::io::savePCDFileBinary(map_path, *map_cloud);
+
+                // Save input scan BEFORE IEKF (propagated/predicted world frame)
+                string scan_pre_path = string(ROOT_DIR) + "Log/debug_scan_pre_" + to_string(rel_time_cur) + ".pcd";
+                pcl::io::savePCDFileBinary(scan_pre_path, *scan_pre_iekf);
+
+                // Save input scan AFTER IEKF: recompute from feats_down_body using final state_point.
+                // feats_down_world is left at the state from the last h_share_model call (one boxplus
+                // before the final state), so we recompute here to get the truly corrected world frame.
+                PointCloudXYZI::Ptr scan_post_iekf(new PointCloudXYZI);
+                scan_post_iekf->resize(feats_down_size);
+                for (int i = 0; i < feats_down_size; i++)
+                {
+                    V3D pb(feats_down_body->points[i].x,
+                           feats_down_body->points[i].y,
+                           feats_down_body->points[i].z);
+                    V3D pw = state_point.rot * (state_point.offset_R_L_I * pb + state_point.offset_T_L_I)
+                             + state_point.pos;
+                    scan_post_iekf->points[i]   = feats_down_body->points[i];
+                    scan_post_iekf->points[i].x = pw(0);
+                    scan_post_iekf->points[i].y = pw(1);
+                    scan_post_iekf->points[i].z = pw(2);
+                }
+                string scan_post_path = string(ROOT_DIR) + "Log/debug_scan_post_" + to_string(rel_time_cur) + ".pcd";
+                pcl::io::savePCDFileBinary(scan_post_path, *scan_post_iekf);
+
+                // Save undistorted body-frame scan for direct comparison with the raw bag scan.
+                // feats_down_body is IMU-undistorted + voxel-downsampled; the raw bag scan is not.
+                // Loading both in CloudCompare (same coordinate frame) reveals undistortion quality.
+                string scan_body_path = string(ROOT_DIR) + "Log/debug_scan_body_" + to_string(rel_time_cur) + ".pcd";
+                pcl::io::savePCDFileBinary(scan_body_path, *feats_down_body);
+
+                // Save raw scan BEFORE undistortion (Measures.lidar is the original lidar msg cloud;
+                // UndistortPcl works on a copy so Measures.lidar is never modified).
+                // Comparing this with debug_scan_body isolates exactly what UndistortPcl changed.
+                string scan_raw_path = string(ROOT_DIR) + "Log/debug_scan_raw_" + to_string(rel_time_cur) + ".pcd";
+                pcl::io::savePCDFileBinary(scan_raw_path, *Measures.lidar);
+
+                // Save full-resolution undistorted scan (same points as raw, sorted by curvature).
+                // Comparing with debug_scan_raw 1-to-1 reveals the exact per-point correction
+                // applied by UndistortPcl as a function of time (curvature = ms offset within scan).
+                string scan_undist_path = string(ROOT_DIR) + "Log/debug_scan_undist_" + to_string(rel_time_cur) + ".pcd";
+                pcl::io::savePCDFileBinary(scan_undist_path, *feats_undistort);
+
+                printf("[DEBUG] Saved map        (%d pts) -> %s\n", (int)map_cloud->size(), map_path.c_str());
+                printf("[DEBUG] Saved pre-IEKF   (%d pts) -> %s\n", (int)scan_pre_iekf->size(), scan_pre_path.c_str());
+                printf("[DEBUG] Saved post-IEKF  (%d pts) -> %s\n", (int)scan_post_iekf->size(), scan_post_path.c_str());
+                printf("[DEBUG] Saved body-frame (%d pts) -> %s\n", (int)feats_down_body->size(), scan_body_path.c_str());
+                printf("[DEBUG] Saved raw scan   (%d pts) -> %s\n", (int)Measures.lidar->size(), scan_raw_path.c_str());
+                printf("[DEBUG] Saved undist     (%d pts) -> %s\n", (int)feats_undistort->size(), scan_undist_path.c_str());
+            }
 
             /*** add the feature points to map kdtree ***/
             t3 = omp_get_wtime();

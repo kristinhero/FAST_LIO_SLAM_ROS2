@@ -4,7 +4,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'')
+_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_curved_tank_fast')
 
 
 #######for ikfom
@@ -106,18 +106,27 @@ ax.legend()
 #######for ikfom#######
 
 ### Calculate and plot state differences (out - pre)
-state_names = {0: 'Attitude', 1: 'Translation', 4: 'Velocity', 5: 'bg', 6: 'ba', 7: 'Gravity'}
-lab_diff = ['', 'diff-x', 'diff-y', 'diff-z']
-for j, name in state_names.items():
-    fig, ax = plt.subplots()
-    fig.suptitle(f'State Difference (out - pre): {name}')
-    for i in range(1, 4):
-        diff = a_out[:, i+j*3] - a_pre[:, i+j*3]
-        if j == 0:  # Attitude is in degrees; wrap difference to (-180, 180]
+state_cfg = {
+    0: ('Attitude',     ['Δroll [deg]',  'Δpitch [deg]', 'Δyaw [deg]'],   True),
+    1: ('Translation',  ['Δx [m]',       'Δy [m]',       'Δz [m]'],       False),
+    4: ('Velocity',     ['Δvx [m/s]',    'Δvy [m/s]',    'Δvz [m/s]'],    False),
+    5: ('Gyro bias',    ['Δbg_x [rad/s]','Δbg_y [rad/s]','Δbg_z [rad/s]'],False),
+    6: ('Acc bias',     ['Δba_x [m/s²]', 'Δba_y [m/s²]', 'Δba_z [m/s²]'],False),
+    7: ('Gravity',      ['Δgx [m/s²]',   'Δgy [m/s²]',   'Δgz [m/s²]'],  False),
+}
+for j, (name, ylabels, wrap) in state_cfg.items():
+    fig, axes = plt.subplots(3, 1, figsize=(12, 7), sharex=True)
+    fig.suptitle(f'State difference (out − pre): {name}')
+    for i in range(3):
+        diff = a_out[:, i+1+j*3] - a_pre[:, i+1+j*3]
+        if wrap:
             diff = (diff + 180) % 360 - 180
-        ax.plot(time, diff, '-', label=lab_diff[i])
-    ax.grid()
-    ax.legend()
+        axes[i].plot(time, diff, '-', color=f'C{i}', label=ylabels[i])
+        axes[i].set_ylabel(ylabels[i])
+        axes[i].legend(fontsize=8)
+        axes[i].grid()
+    axes[-1].set_xlabel('Time [s]')
+    plt.tight_layout()
 
 
 # ### Draw IMU data
@@ -239,30 +248,28 @@ try:
         dominant_idx = np.argmax(np.abs(weakest_vec), axis=1)
 
         fig3, axs = plt.subplots(2, 2, figsize=(12, 8))
-        fig3.suptitle('EKF Information Matrix Analysis')
+        fig3.suptitle('IEKF Information Matrix Analysis')
 
         axs[0, 0].plot(t_info, n_pts)
         axs[0, 0].set_title('Effective Points')
         axs[0, 0].set_xlabel('Time [s]')
         axs[0, 0].grid()
 
-        axs[0, 1].plot(t_info, mean_res, label='mean residual [m]')
+        # axs[0, 1].plot(t_info, mean_res, label='mean residual [m]')
         axs[0, 1].plot(t_info, cost,     label='cost (sum sq res)')
-        axs[0, 1].set_title('Residuals / Cost')
+        axs[0, 1].set_title('Residuals')
         axs[0, 1].set_xlabel('Time [s]')
         axs[0, 1].legend()
         axs[0, 1].grid()
 
         eig_labels = [f'eig_{i+1}' for i in range(6)]
-        # for i in range(6):
-            # axs[1, 0].plot(t_info, eig_vals[:, i], label=eig_labels[i])
-        axs[1,0].plot(t_info, eig_vals[:, 0], label='eig_1 (min)')
+        for i in range(6):
+            axs[1, 0].plot(t_info, eig_vals[:, i], label=eig_labels[i])
         axs[1, 0].set_title('Info Matrix Eigenvalues (ascending)')
         axs[1, 0].set_xlabel('Time [s]')
-        # axs[1, 0].set_yscale('log')
+        axs[1, 0].set_yscale('log')
         axs[1, 0].legend()
         axs[1, 0].grid()
-
         axs[1, 1].plot(t_info, cond)
         axs[1, 1].set_title('Condition Number (eig_min / eig_max)')
         axs[1, 1].set_xlabel('Time [s]')
