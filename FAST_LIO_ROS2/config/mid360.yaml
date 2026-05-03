@@ -2,8 +2,8 @@
     ros__parameters:
         feature_extract_enable: false # Feature extraction is currently not supported for MID-360, so please set as false.
         point_filter_num: 3
-        max_iteration: 20
-        filter_size_surf: 0.3
+        max_iteration: 3
+        filter_size_surf: 0.5
         filter_size_map: 0.5
         cube_side_length: 1000.0
         runtime_pos_log_enable: true
@@ -15,7 +15,7 @@
             time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
             time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
                                         # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
-            lidar_reliable_qos: true    # true: RELIABLE QoS for bag replay; false: BEST_EFFORT (SensorDataQoS) for live sensor
+            lidar_reliable_qos: false    # true: RELIABLE QoS for bag replay; false: BEST_EFFORT (SensorDataQoS) for live sensor
 
         preprocess:
             lidar_type: 4                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 4 for Livox MID-360 with PointCloud2, 5 for any other pointcloud input
@@ -33,7 +33,7 @@
             fov_degree:    360.0
             det_range:     100.0
             extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
-            debug_scan_en: true          # true: save local map + per-iteration costs at DEBUG_TIME_START/END
+            debug_scan_en: false          # true: save local map + per-iteration costs at DEBUG_TIME_START/END
             extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
             extrinsic_R: [ 1., 0., 0.,
                             0., 1., 0.,
