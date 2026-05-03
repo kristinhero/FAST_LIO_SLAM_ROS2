@@ -4,7 +4,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_square_tank_slow')
+_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_curved_tank_fast')
 
 
 #######for ikfom
@@ -46,6 +46,22 @@ ax.set_ylabel('y [m]')
 ax.set_aspect('equal')
 ax.grid()
 ax.legend()
+
+# --- 3D trajectory ---
+fig3d = plt.figure()
+ax3d = fig3d.add_subplot(111, projection='3d')
+fig3d.suptitle('Estimated Trajectory (3D)')
+ax3d.plot(a_out[:, 4], a_out[:, 5], a_out[:, 6], '-', label='out', color='y', lw=0.8)
+ax3d.plot(a_pre[:, 4], a_pre[:, 5], a_pre[:, 6], '--', label='pre', color='m', lw=0.8)
+ax3d.set_xlabel('x [m]')
+ax3d.set_ylabel('y [m]')
+ax3d.set_zlabel('z [m]')
+ax3d.legend()
+ax3d.grid()
+pad = 0.5
+ax3d.set_xlim(a_out[:, 4].min() - pad, a_out[:, 4].max() + pad)
+ax3d.set_ylim(a_out[:, 5].min() - pad, a_out[:, 5].max() + pad)
+ax3d.set_zlim(a_out[:, 6].min() - pad, a_out[:, 6].max() + pad)
 
 # --- Velocity (j=4) ---
 fig, ax = plt.subplots()
@@ -277,6 +293,70 @@ try:
 
 except Exception as e:
     print('Could not load Log/pos_log.txt:', e)
+
+### Time log analysis from fast_lio_time_log.csv
+try:
+    tlog = np.genfromtxt(os.path.join(_dir, 'fast_lio_time_log.csv'),
+                         delimiter=',', skip_header=1)
+    # columns: 0=timestamp, 1=total, 2=scan_pts, 3=incremental, 4=search,
+    #          5=del_size, 6=delete, 7=tree_st, 8=tree_end, 9=add_pts, 10=preprocess, 11=solve
+    t_log   = tlog[:, 0] - tlog[0, 0]          # relative time [s]
+    total   = tlog[:, 1]  * 1e3                 # ms
+    preproc = tlog[:, 10] * 1e3
+    search  = tlog[:, 4]  * 1e3
+    incr    = tlog[:, 3]  * 1e3
+    delete  = tlog[:, 6]  * 1e3
+    solve   = tlog[:, 11] * 1e3 if tlog.shape[1] > 11 else np.zeros(len(tlog))
+    other   = total - preproc - search - incr - delete - solve
+
+    # --- Timing overview ---
+    fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
+    fig.suptitle('FAST-LIO Timing (queue=10)')
+
+    axes[0].plot(t_log, total, lw=0.7, label='total')
+    axes[0].axhline(np.mean(total), color='r', ls='--', lw=1,
+                    label=f'mean {np.mean(total):.1f} ms')
+    axes[0].axhline(np.percentile(total, 95), color='orange', ls=':', lw=1,
+                    label=f'p95 {np.percentile(total, 95):.1f} ms')
+    axes[0].axhline(100, color='k', ls='-', lw=0.8, label='scan period 100 ms')
+    axes[0].set_ylabel('Time [ms]')
+    axes[0].legend(fontsize=8)
+    axes[0].grid()
+
+    axes[1].stackplot(t_log, preproc, search, incr, delete, solve, other,
+                      labels=['preprocess', 'search', 'incremental', 'delete', 'solve', 'other'],
+                      alpha=0.8)
+    axes[1].set_ylabel('Time [ms]')
+    axes[1].set_xlabel('Time [s]')
+    axes[1].legend(fontsize=8, loc='upper left')
+    axes[1].grid()
+    plt.tight_layout()
+
+    # --- Point cloud and tree sizes ---
+    scan_pts = tlog[:, 2]
+    add_pts  = tlog[:, 9]
+    tree_st  = tlog[:, 7]
+    tree_end = tlog[:, 8]
+
+    fig, axes = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
+    fig.suptitle('Point Cloud & Tree Sizes (queue=10)')
+
+    axes[0].plot(t_log, scan_pts, lw=0.7, label='scan points')
+    axes[0].plot(t_log, add_pts,  lw=0.7, label='added to tree')
+    axes[0].set_ylabel('Points')
+    axes[0].legend(fontsize=8)
+    axes[0].grid()
+
+    axes[1].plot(t_log, tree_st,  lw=0.7, label='tree size (start)')
+    axes[1].plot(t_log, tree_end, lw=0.7, label='tree size (end)')
+    axes[1].set_ylabel('Nodes')
+    axes[1].set_xlabel('Time [s]')
+    axes[1].legend(fontsize=8)
+    axes[1].grid()
+    plt.tight_layout()
+
+except Exception as e:
+    print('Could not load fast_lio_time_log.csv:', e)
 
 plt.tight_layout()
 plt.show()

@@ -135,6 +135,66 @@ if pos_w.shape[1] >= 100:
     axes[-1].set_xlabel('Time [s]')
     plt.tight_layout()
 
+# --- Figure 6a: Eigenvector heatmaps around the spike ---
+# Columns 0-2 = pos (x,y,z), cols 3-5 = rot; reorder to rot-first to match paper style.
+if pos_w.shape[1] >= 100:
+    info_flat = pos_w[:, 64:100]
+    info_mats = info_flat.reshape(-1, 6, 6)
+
+    spike_t  = 235.3
+    n_side   = 3
+    spike_idx = int(np.argmin(np.abs(t_pos - spike_t)))
+    sel = list(range(max(0, spike_idx - n_side),
+                     min(len(t_pos), spike_idx + n_side + 1)))
+
+    # reorder columns: rot (3,4,5) then pos (0,1,2) — matches R,P,Y,X,Y,Z paper style
+    reorder = [3, 4, 5, 0, 1, 2]
+    col_labels = ['Rx', 'Ry', 'Rz', 'X', 'Y', 'Z']
+
+    n_panels = len(sel)
+    fig, axes = plt.subplots(1, n_panels, figsize=(2.2 * n_panels, 5))
+    if n_panels == 1:
+        axes = [axes]
+    fig.suptitle(f'Eigenvector heatmaps  (rows=v1..v6 ascending eigenvalue, cols=state DOF)\n'
+                 f'spike at t≈{spike_t}s highlighted in red', fontsize=9)
+
+    for panel_i, idx in enumerate(sel):
+        mat = info_mats[idx][:, reorder][reorder, :]  # reorder both rows and cols
+        vals, vecs = np.linalg.eigh(mat)              # ascending eigenvalues
+        data = np.abs(vecs.T)                          # row i = eigenvector i
+
+        ax = axes[panel_i]
+        ax.imshow(data, cmap='Greys_r', vmin=0, vmax=1, aspect='auto')
+
+        is_spike = (idx == spike_idx)
+        ax.set_title(f't={t_pos[idx]:.2f}', fontsize=7,
+                     color='red' if is_spike else 'black',
+                     fontweight='bold' if is_spike else 'normal')
+
+        ax.set_xticks(range(6))
+        ax.set_xticklabels(col_labels, fontsize=6, rotation=45)
+
+        # y-axis: eigenvector index and eigenvalue
+        ax.set_yticks(range(6))
+        if panel_i == 0:
+            ax.set_yticklabels(
+                [f'v{i+1}  {vals[i]:.0f}' for i in range(6)], fontsize=6)
+        else:
+            ax.set_yticklabels(
+                [f'{vals[i]:.0f}' for i in range(6)], fontsize=6)
+
+        # red separator line at the largest jump between consecutive eigenvalues
+        if vals[-1] > 1e-10:
+            ratios = np.diff(np.log10(np.clip(vals, 1e-10, None)))
+            gap    = int(np.argmax(ratios))  # row index AFTER which the gap is largest
+            ax.axhline(gap + 0.5, color='red', linewidth=1.2)
+
+        for spine in ax.spines.values():
+            spine.set_edgecolor('red' if is_spike else 'grey')
+            spine.set_linewidth(2 if is_spike else 0.5)
+
+    plt.tight_layout()
+
 # --- Figure 6: Per-iteration cost and max|dx| at the spike scan ---
 iter_costs_path = os.path.join(_dir, 'debug_iter_costs.txt')
 if os.path.exists(iter_costs_path):
