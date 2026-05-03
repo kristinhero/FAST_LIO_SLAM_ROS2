@@ -4,7 +4,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_curved_tank_fast')
+_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_square_tank_slow')
 
 
 #######for ikfom
@@ -14,23 +14,10 @@ a_pre=np.loadtxt(os.path.join(_dir, 'mat_pre.txt'))
 a_out=np.loadtxt(os.path.join(_dir, 'mat_out.txt'))
 time=a_pre[:,0]
 
-# # Filter data to plot only from 110 to 190 seconds
-# start_time = 110
-# end_time = 190
-# # mask = (time >= start_time) & (time <= end_time)
-# mask = (time >= start_time) # Plot only after 110 seconds
-# a_pre = a_pre[mask]
-# a_out = a_out[mask]
-# time = time[mask]
-
 # --- Attitude (j=0) ---
 fig, ax = plt.subplots()
 fig.suptitle('Attitude')
 for i in range(1, 4):
-    # pre_vals = np.where(a_pre[:, i+0*3] < -105, a_pre[:, i+0*3] + 360, a_pre[:, i+0*3])
-    # out_vals = np.where(a_out[:, i+0*3] < -105, a_out[:, i+0*3] + 360, a_out[:, i+0*3])
-    # ax.plot(time, pre_vals, '-', label=lab_pre[i])
-    # ax.plot(time, out_vals, '-', label=lab_out[i])
     ax.plot(time, a_pre[:, i+0*3], '-', label=lab_pre[i])
     ax.plot(time, a_out[:, i+0*3], '-', label=lab_out[i])
 ax.set_xlabel('Time [s]')
@@ -105,47 +92,45 @@ ax.grid()
 ax.legend()
 #######for ikfom#######
 
-### Calculate and plot state differences (out - pre)
-state_cfg = {
-    0: ('Attitude',     ['Δroll [deg]',  'Δpitch [deg]', 'Δyaw [deg]'],   True),
-    1: ('Translation',  ['Δx [m]',       'Δy [m]',       'Δz [m]'],       False),
-    4: ('Velocity',     ['Δvx [m/s]',    'Δvy [m/s]',    'Δvz [m/s]'],    False),
-    5: ('Gyro bias',    ['Δbg_x [rad/s]','Δbg_y [rad/s]','Δbg_z [rad/s]'],False),
-    6: ('Acc bias',     ['Δba_x [m/s²]', 'Δba_y [m/s²]', 'Δba_z [m/s²]'],False),
-    7: ('Gravity',      ['Δgx [m/s²]',   'Δgy [m/s²]',   'Δgz [m/s²]'],  False),
-}
-for j, (name, ylabels, wrap) in state_cfg.items():
-    fig, axes = plt.subplots(3, 1, figsize=(12, 7), sharex=True)
-    fig.suptitle(f'State difference (out − pre): {name}')
-    for i in range(3):
-        diff = a_out[:, i+1+j*3] - a_pre[:, i+1+j*3]
-        if wrap:
-            diff = (diff + 180) % 360 - 180
-        axes[i].plot(time, diff, '-', color=f'C{i}', label=ylabels[i])
-        axes[i].set_ylabel(ylabels[i])
-        axes[i].legend(fontsize=8)
-        axes[i].grid()
-    axes[-1].set_xlabel('Time [s]')
-    plt.tight_layout()
+# ### Calculate and plot state differences (out - pre)
+# state_cfg = {
+#     0: ('Attitude',     ['Δroll [deg]',  'Δpitch [deg]', 'Δyaw [deg]'],   True),
+#     1: ('Translation',  ['Δx [m]',       'Δy [m]',       'Δz [m]'],       False),
+#     4: ('Velocity',     ['Δvx [m/s]',    'Δvy [m/s]',    'Δvz [m/s]'],    False),
+#     5: ('Gyro bias',    ['Δbg_x [rad/s]','Δbg_y [rad/s]','Δbg_z [rad/s]'],False),
+#     6: ('Acc bias',     ['Δba_x [m/s²]', 'Δba_y [m/s²]', 'Δba_z [m/s²]'],False),
+#     7: ('Gravity',      ['Δgx [m/s²]',   'Δgy [m/s²]',   'Δgz [m/s²]'],  False),
+# }
+# for j, (name, ylabels, wrap) in state_cfg.items():
+#     fig, axes = plt.subplots(3, 1, figsize=(12, 7), sharex=True)
+#     fig.suptitle(f'State difference (out − pre): {name}')
+#     for i in range(3):
+#         diff = a_out[:, i+1+j*3] - a_pre[:, i+1+j*3]
+#         if wrap:
+#             diff = (diff + 180) % 360 - 180
+#         axes[i].plot(time, diff, '-', color=f'C{i}', label=ylabels[i])
+#         axes[i].set_ylabel(ylabels[i])
+#         axes[i].legend(fontsize=8)
+#         axes[i].grid()
+#     axes[-1].set_xlabel('Time [s]')
+#     plt.tight_layout()
 
 
-# ### Draw IMU data
-# fig, axs = plt.subplots(2)
-# imu=np.loadtxt('imu.txt')
-# time=imu[:,0]
-# axs[0].set_title('Gyroscope')
-# axs[1].set_title('Accelerameter')
-# lab_1 = ['gyr-x', 'gyr-y', 'gyr-z']
-# lab_2 = ['acc-x', 'acc-y', 'acc-z']
-# for i in range(3):
-#     # if i==1:
-#     axs[0].plot(time, imu[:,i+1],'.-', label=lab_1[i])
-#     axs[1].plot(time, imu[:,i+4],'.-', label=lab_2[i])
-# for i in range(2):
-#     # axs[i].set_xlim(386,389)
-#     axs[i].grid()
-#     axs[i].legend()
-# plt.grid()
+### Draw IMU data
+fig, axs = plt.subplots(2)
+imu=np.loadtxt(os.path.join(_dir, 'imu.txt'))
+time=imu[:,0]
+axs[0].set_title('Gyroscope')
+axs[1].set_title('Accelerometer')
+lab_1 = ['gyr-x', 'gyr-y', 'gyr-z']
+lab_2 = ['acc-x', 'acc-y', 'acc-z']
+for i in range(3):
+    axs[0].plot(time, imu[:,i+1],'-', label=lab_1[i])
+    axs[1].plot(time, imu[:,i+4],'-', label=lab_2[i])
+for i in range(2):
+    axs[i].grid()
+    axs[i].legend()
+plt.grid()
 
 # #### Draw time calculation
 # plt.figure(3)
@@ -184,10 +169,10 @@ for j, (name, ylabels, wrap) in state_cfg.items():
 # ax2.set_ylim([0, 100])
 
 # plt.xticks([1,2,3], ('Outdoor Scene', 'Indoor Scene 1', 'Indoor Scene 2'))
-# # # print(time_se)
-# # # print(a_out3[:,2])
-# # plt.grid()
-# # plt.savefig("time.pdf", dpi=1200)
+# # print(time_se)
+# # print(a_out3[:,2])
+# plt.grid()
+# plt.savefig("time.pdf", dpi=1200)
 
 # Plot covariance diagonals from pos_log.txt if available
 try:
