@@ -27,7 +27,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
 
   if(N GREATER 4)
     add_definitions(-DMP_EN)
-    add_definitions(-DMP_PROC_NUM=3)
+    add_definitions(-DMP_PROC_NUM=6)
     message("core for MP: 3")
   elseif(N GREATER 3)
     add_definitions(-DMP_EN)
