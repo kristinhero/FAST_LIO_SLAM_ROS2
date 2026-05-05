@@ -4,7 +4,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_curved_tank_fast')
+_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'') # adjust to your log directory
 
 
 #######for ikfom
@@ -288,6 +288,62 @@ try:
         axs4.legend()
         axs4.grid()
         plt.tight_layout()
+
+        # --- Eigenvector heatmaps: one per xyz direction, picked at its peak dominance time ---
+        # H^T*H cols: 0=pos_x, 1=pos_y, 2=pos_z, 3=rot_x, 4=rot_y, 5=rot_z
+        # Reorder to rot-first (paper style): [3,4,5,0,1,2] → Rx,Ry,Rz,X,Y,Z
+        reorder    = [3, 4, 5, 0, 1, 2]
+        col_labels = ['Rx', 'Ry', 'Rz', 'X', 'Y', 'Z']
+        xyz_labels = ['X', 'Y', 'Z']
+        xyz_cols   = [0, 1, 2]   # original column indices for pos_x, pos_y, pos_z
+
+        from matplotlib.colors import PowerNorm
+        import matplotlib.colorbar as mcolorbar
+        gamma = 0.35   # <1 spreads low values; raise toward 1.0 for more linear
+
+        # 4 columns: 3 heatmaps + 1 narrow colorbar column
+        fig_h, axes_h = plt.subplots(1, 4, figsize=(12, 5),
+                                     gridspec_kw={'width_ratios': [4, 4, 4, 0.4]})
+        fig_h.suptitle('Eigenvector heatmaps at peak X / Y / Z dominance in weakest eigenvector\n'
+                        '(rows = v1..v6 ascending eigenvalue, cols = Rx Ry Rz X Y Z)', fontsize=9)
+
+        norm = PowerNorm(gamma=gamma, vmin=0, vmax=1)
+
+        for panel, (xyz_label, orig_col) in enumerate(zip(xyz_labels, xyz_cols)):
+            peak_idx = int(np.argmax(np.abs(weakest_vec[:, orig_col])))
+
+            mat = info_mats[peak_idx][:, reorder][reorder, :]
+            vals, vecs = np.linalg.eigh(mat)
+            data = np.abs(vecs.T)          # row i = eigenvector i (ascending)
+
+            ax = axes_h[panel]
+            im = ax.imshow(data, cmap='Greys_r', norm=norm, aspect='auto')
+
+            # red separator at largest eigenvalue gap
+            if vals[-1] > 1e-10:
+                ratios = np.diff(np.log10(np.clip(vals, 1e-10, None)))
+                gap = int(np.argmax(ratios))
+                ax.axhline(gap + 0.5, color='red', lw=1.2)
+
+            ax.set_title(f'{xyz_label} dominant  t={t_info[peak_idx]:.2f}s', fontsize=8)
+            ax.set_xticks(range(6))
+            ax.set_xticklabels(col_labels, fontsize=7, rotation=45)
+            ax.set_yticks(range(6))
+            if panel == 0:
+                ax.set_yticklabels(
+                    [f'v{i+1}  {vals[i]:.0f}' for i in range(6)], fontsize=7)
+            else:
+                ax.set_yticklabels(
+                    [f'{vals[i]:.0f}' for i in range(6)], fontsize=7)
+
+        # colorbar with tick marks at representative |component| values
+        cbar = fig_h.colorbar(im, cax=axes_h[3])
+        cbar.set_label('|component|', fontsize=7)
+        cbar.set_ticks([0, 0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 1.0])
+        cbar.ax.tick_params(labelsize=6)
+
+        plt.tight_layout()
+
     else:
         print('Log/pos_log.txt does not contain info matrix columns (need >=100 columns per line).')
 
@@ -298,33 +354,57 @@ except Exception as e:
 try:
     tlog = np.genfromtxt(os.path.join(_dir, 'fast_lio_time_log.csv'),
                          delimiter=',', skip_header=1)
-    # columns: 0=timestamp, 1=total, 2=scan_pts, 3=incremental, 4=search,
-    #          5=del_size, 6=delete, 7=tree_st, 8=tree_end, 9=add_pts, 10=preprocess, 11=solve
-    t_log   = tlog[:, 0] - tlog[0, 0]          # relative time [s]
-    total   = tlog[:, 1]  * 1e3                 # ms
-    preproc = tlog[:, 10] * 1e3
-    search  = tlog[:, 4]  * 1e3
-    incr    = tlog[:, 3]  * 1e3
-    delete  = tlog[:, 6]  * 1e3
-    solve   = tlog[:, 11] * 1e3 if tlog.shape[1] > 11 else np.zeros(len(tlog))
-    other   = total - preproc - search - incr - delete - solve
+    # columns: 0=timestamp, 1=total, 2=scan_pts, 3=incremental, 4=match_time,
+    #          5=del_size, 6=delete, 7=tree_st, 8=tree_end, 9=add_pts,
+    #          10=preprocess(lidar cb), 11=solve,
+    #          12=imu_proc, 13=fov_seg, 14=downsample, 15=iekf_total
+    t_log      = tlog[:, 0] - tlog[0, 0]
+    total      = tlog[:, 1]  * 1e3
+    match_time = tlog[:, 4]  * 1e3
+    incr       = tlog[:, 3]  * 1e3
+    delete     = tlog[:, 6]  * 1e3
+    n          = len(tlog)
+    solve      = tlog[:, 11] * 1e3 if tlog.shape[1] > 11 else np.zeros(n)
+    imu_proc   = tlog[:, 12] * 1e3 if tlog.shape[1] > 12 else np.zeros(n)
+    fov_seg    = tlog[:, 13] * 1e3 if tlog.shape[1] > 13 else np.zeros(n)
+    downsample = tlog[:, 14] * 1e3 if tlog.shape[1] > 14 else np.zeros(n)
+    iekf_total = tlog[:, 15] * 1e3 if tlog.shape[1] > 15 else np.zeros(n)
+    iekf_other = np.maximum(iekf_total - match_time - solve, 0)
+    map_incr   = incr + delete
+    other      = np.maximum(total - imu_proc - fov_seg - downsample
+                            - iekf_total - map_incr, 0)
 
     # --- Timing overview ---
     fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
-    fig.suptitle('FAST-LIO Timing (queue=10)')
+    fig.suptitle('FAST-LIO Timing breakdown')
 
     axes[0].plot(t_log, total, lw=0.7, label='total')
     axes[0].axhline(np.mean(total), color='r', ls='--', lw=1,
-                    label=f'mean {np.mean(total):.1f} ms')
-    axes[0].axhline(np.percentile(total, 95), color='orange', ls=':', lw=1,
-                    label=f'p95 {np.percentile(total, 95):.1f} ms')
+                    label='mean %.1f ms' % np.mean(total))
     axes[0].axhline(100, color='k', ls='-', lw=0.8, label='scan period 100 ms')
     axes[0].set_ylabel('Time [ms]')
     axes[0].legend(fontsize=8)
     axes[0].grid()
 
-    axes[1].stackplot(t_log, preproc, search, incr, delete, solve, other,
-                      labels=['preprocess', 'search', 'incremental', 'delete', 'solve', 'other'],
+    _threshold = 0.01 * total.mean()   # bands < 1% of mean total → fold into other
+    _bands  = [imu_proc, fov_seg, downsample, match_time, solve, iekf_other, map_incr, other]
+    _labels = ['imu proc', 'fov seg', 'downsample',
+               'iekf match (NN+plane)', 'iekf solve', 'iekf other',
+               'map update (incr+del)', 'other']
+    _merged_other = other.copy()
+    _keep_bands, _keep_labels = [], []
+    for b, l in zip(_bands[:-1], _labels[:-1]):   # last entry is already 'other'
+        if b.mean() < _threshold:
+            _merged_other += b
+        else:
+            _keep_bands.append(b)
+            _keep_labels.append(l)
+    _keep_bands.append(_merged_other)
+    _keep_labels.append('other')
+    _order = np.argsort([b.mean() for b in _keep_bands])
+    axes[1].stackplot(t_log,
+                      *[_keep_bands[i] for i in _order],
+                      labels=[_keep_labels[i] for i in _order],
                       alpha=0.8)
     axes[1].set_ylabel('Time [ms]')
     axes[1].set_xlabel('Time [s]')
