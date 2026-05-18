@@ -50,6 +50,8 @@ class ImuProcess
   void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
 
   ofstream fout_imu;
+  ofstream fout_scan_dbg;
+  bool debug_scan_en = false;
   V3D cov_acc;
   V3D cov_gyr;
   V3D cov_acc_scale;
@@ -237,7 +239,34 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
 
   double dt = 0;
 
+  // Detect post-gap scan: last IMU is >0.3s behind the last scan end
+  bool log_all_steps = debug_scan_en && fout_scan_dbg.is_open() &&
+                       (imu_end_time - last_lidar_end_time_) > 0.3;
+
+  if (log_all_steps)
+  {
+    // Header: SCAN scan_t imu_n gap_s  (gap_s = time between last scan end and first new IMU)
+    double gap_s = imu_end_time - last_lidar_end_time_;
+    fout_scan_dbg << "SCAN"
+                  << " t="      << fixed << setprecision(4) << pcl_beg_time - first_lidar_time
+                  << " imu_n="  << meas.imu.size()
+                  << " gap_s="  << gap_s
+                  << "\n";
+    // Step -1: state before any propagation
+    state_ikfom s0 = kf_state.get_x();
+    V3D e0 = RotMtoEuler(s0.rot.toRotationMatrix()) * 180.0 / M_PI;
+    fout_scan_dbg << "PROP"
+                  << " step=-1"
+                  << " t=" << last_lidar_end_time_ - first_lidar_time
+                  << " dt=0"
+                  << " px=" << s0.pos(0) << " py=" << s0.pos(1) << " pz=" << s0.pos(2)
+                  << " roll=" << e0(0) << " pitch=" << e0(1) << " yaw=" << e0(2)
+                  << " vx=" << s0.vel(0) << " vy=" << s0.vel(1) << " vz=" << s0.vel(2)
+                  << "\n";
+  }
+
   input_ikfom in;
+  int imu_step = 0;
   for (auto it_imu = v_imu.begin(); it_imu < (v_imu.end() - 1); it_imu++)
   {
     auto &&head = *(it_imu);
@@ -247,7 +276,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
     double head_stamp = rclcpp::Time(head->header.stamp).seconds();
 
     if (tail_stamp < last_lidar_end_time_)    continue;
-    
+
     angvel_avr<<0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
                 0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
                 0.5 * (head->angular_velocity.z + tail->angular_velocity.z);
@@ -262,13 +291,12 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
     if(head_stamp < last_lidar_end_time_)
     {
       dt = tail_stamp - last_lidar_end_time_;
-      // dt = tail->header.stamp.toSec() - pcl_beg_time;
     }
     else
     {
       dt = tail_stamp - head_stamp;
     }
-    
+
     in.acc = acc_avr;
     in.gyro = angvel_avr;
     Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
@@ -276,6 +304,21 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
     Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
     Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
     kf_state.predict(dt, Q, in);
+
+    if (log_all_steps)
+    {
+      state_ikfom s = kf_state.get_x();
+      V3D e = RotMtoEuler(s.rot.toRotationMatrix()) * 180.0 / M_PI;
+      fout_scan_dbg << "PROP"
+                    << " step=" << imu_step
+                    << " t="    << fixed << setprecision(4) << tail_stamp - first_lidar_time
+                    << " dt="   << dt
+                    << " px=" << s.pos(0) << " py=" << s.pos(1) << " pz=" << s.pos(2)
+                    << " roll=" << e(0) << " pitch=" << e(1) << " yaw=" << e(2)
+                    << " vx=" << s.vel(0) << " vy=" << s.vel(1) << " vz=" << s.vel(2)
+                    << "\n";
+    }
+    imu_step++;
 
     /* save the poses at each IMU measurements */
     imu_state = kf_state.get_x();
@@ -293,7 +336,22 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
   dt = note * (pcl_end_time - imu_end_time);
   kf_state.predict(dt, Q, in);
-  
+
+  if (log_all_steps)
+  {
+    state_ikfom s = kf_state.get_x();
+    V3D e = RotMtoEuler(s.rot.toRotationMatrix()) * 180.0 / M_PI;
+    fout_scan_dbg << "PROP"
+                  << " step=" << imu_step
+                  << " t="    << fixed << setprecision(4) << pcl_end_time - first_lidar_time
+                  << " dt="   << dt
+                  << " px=" << s.pos(0) << " py=" << s.pos(1) << " pz=" << s.pos(2)
+                  << " roll=" << e(0) << " pitch=" << e(1) << " yaw=" << e(2)
+                  << " vx=" << s.vel(0) << " vy=" << s.vel(1) << " vz=" << s.vel(2)
+                  << "\n";
+    fout_scan_dbg.flush();
+  }
+
   imu_state = kf_state.get_x();
   last_imu_ = meas.imu.back();
   last_lidar_end_time_ = pcl_end_time;
@@ -365,6 +423,8 @@ void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 
       // ROS_INFO("IMU Initial Done: Gravity: %.4f %.4f %.4f %.4f; state.bias_g: %.4f %.4f %.4f; acc covarience: %.8f %.8f %.8f; gry covarience: %.8f %.8f %.8f",\
       //          imu_state.grav[0], imu_state.grav[1], imu_state.grav[2], mean_acc.norm(), cov_bias_gyr[0], cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1], cov_gyr[2]);
       fout_imu.open(DEBUG_FILE_DIR("imu.txt"),ios::out);
+      if (debug_scan_en)
+        fout_scan_dbg.open(DEBUG_FILE_DIR("scan_dbg.txt"), ios::out);
     }
 
     return;
