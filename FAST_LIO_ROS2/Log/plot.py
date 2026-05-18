@@ -4,7 +4,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'') # adjust to your log directory
+_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_square_tank_slow') # adjust to your log directory
 
 
 #######for ikfom

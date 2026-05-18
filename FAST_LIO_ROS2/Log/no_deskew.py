@@ -287,4 +287,54 @@ try:
 except Exception as e:
     print('Could not load fast_lio_time_log.csv:', e)
 
+# ── No-deskew eigenvector heatmaps at deskew peak timestamps ──────────────────
+try:
+    from matplotlib.colors import PowerNorm
+    nd_pos_h   = load_pos(nd_dir)
+    if nd_pos_h.shape[1] >= 100:
+        t_nd_h       = norm_t(nd_pos_h[:, 0])
+        info_mats_nd = nd_pos_h[:, 64:100].reshape(-1, 6, 6)
+
+        target_times  = [50.3, 161.9, 428.7]
+        target_labels = ['X dominant (dk t=50.3s)', 'Y dominant (dk t=161.9s)', 'Z dominant (dk t=428.7s)']
+        reorder    = [3, 4, 5, 0, 1, 2]
+        col_labels = ['Rx', 'Ry', 'Rz', 'X', 'Y', 'Z']
+        norm_pw    = PowerNorm(gamma=0.35, vmin=0, vmax=1)
+
+        fig_h, axes_h = plt.subplots(1, 4, figsize=(12, 5),
+                                     gridspec_kw={'width_ratios': [4, 4, 4, 0.4]})
+        fig_h.suptitle('No-deskew eigenvector heatmaps at deskew peak X/Y/Z dominance times\n'
+                        '(rows = v1..v6 ascending eigenvalue, cols = Rx Ry Rz X Y Z)', fontsize=9)
+
+        for panel, (t_target, t_label) in enumerate(zip(target_times, target_labels)):
+            idx = int(np.argmin(np.abs(t_nd_h - t_target)))
+            mat = info_mats_nd[idx][:, reorder][reorder, :]
+            vals, vecs = np.linalg.eigh(mat)
+            data = np.abs(vecs.T)
+
+            ax = axes_h[panel]
+            im = ax.imshow(data, cmap='Greys_r', norm=norm_pw, aspect='auto')
+
+            if vals[-1] > 1e-10:
+                ratios = np.diff(np.log10(np.clip(vals, 1e-10, None)))
+                ax.axhline(int(np.argmax(ratios)) + 0.5, color='red', lw=1.2)
+
+            ax.set_title(f'{t_label}\nnd t={t_nd_h[idx]:.2f}s', fontsize=8)
+            ax.set_xticks(range(6))
+            ax.set_xticklabels(col_labels, fontsize=7, rotation=45)
+            ax.set_yticks(range(6))
+            if panel == 0:
+                ax.set_yticklabels([f'v{i+1}  {vals[i]:.0f}' for i in range(6)], fontsize=7)
+            else:
+                ax.set_yticklabels([f'{vals[i]:.0f}' for i in range(6)], fontsize=7)
+
+        cbar = fig_h.colorbar(im, cax=axes_h[3])
+        cbar.set_label('|component|', fontsize=7)
+        cbar.set_ticks([0, 0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 1.0])
+        cbar.ax.tick_params(labelsize=6)
+        plt.tight_layout()
+
+except Exception as e:
+    print('Could not generate no-deskew heatmap:', e)
+
 plt.show()
