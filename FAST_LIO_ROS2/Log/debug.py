@@ -260,8 +260,8 @@ _set_half_ticks([ax_imu, ax_pts])
 plt.tight_layout()
 
 # --- Figure 5: Information matrix eigenvalues ---
-if pos_w.shape[1] >= 100:
-    info_mats = pos_w[:, 64:100].reshape(-1, 6, 6)
+if pos_w.shape[1] >= 87:
+    info_mats = pos_w[:, 51:87].reshape(-1, 6, 6)
     eig_vals  = np.array([np.linalg.eigvalsh(m) for m in info_mats])
 
     fig, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
@@ -292,8 +292,8 @@ if pos_w.shape[1] >= 100:
     plt.tight_layout()
 
 # --- Figure 6a: Eigenvector heatmaps around the spike ---
-if pos_w.shape[1] >= 100:
-    info_mats = pos_w[:, 64:100].reshape(-1, 6, 6)
+if pos_w.shape[1] >= 87:
+    info_mats = pos_w[:, 51:87].reshape(-1, 6, 6)
     spike_t   = SPIKE_T
     n_side    = 3
     spike_idx = int(np.argmin(np.abs(t_pos - spike_t)))

@@ -4,7 +4,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_square_tank_slow') # adjust to your log directory
+_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_no_motion_deskew/curved_tank_fast') # adjust to your log directory
 
 
 #######for ikfom
@@ -15,26 +15,30 @@ a_out=np.loadtxt(os.path.join(_dir, 'mat_out.txt'))
 time=a_pre[:,0]
 
 # --- Attitude (j=0) ---
-fig, ax = plt.subplots()
+att_labels = ['roll [deg]', 'pitch [deg]', 'yaw [deg]']
+fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
 fig.suptitle('Attitude')
-for i in range(1, 4):
-    ax.plot(time, a_pre[:, i+0*3], '-', label=lab_pre[i])
-    ax.plot(time, a_out[:, i+0*3], '-', label=lab_out[i])
-ax.set_xlabel('Time [s]')
-ax.set_ylabel('Attitude [deg]')
-ax.grid()
-ax.legend()
+for i in range(3):
+    axes[i].plot(time, a_pre[:, i+1], '-', color=f'C{i*2}',   label='pre')
+    axes[i].plot(time, a_out[:, i+1], '-', color=f'C{i*2+1}', label='out')
+    axes[i].set_ylabel(att_labels[i])
+    axes[i].grid()
+    axes[i].legend(fontsize=8, loc='center right')
+axes[-1].set_xlabel('Time [s]')
+plt.tight_layout()
 
 # --- Translation (j=1) ---
-fig, ax = plt.subplots()
+trans_labels = ['x [m]', 'y [m]', 'z [m]']
+fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
 fig.suptitle('Translation')
-for i in range(1, 4):
-    ax.plot(time, a_pre[:, i+1*3], '-', label=lab_pre[i])
-    ax.plot(time, a_out[:, i+1*3], '-', label=lab_out[i])
-ax.set_xlabel('Time [s]')
-ax.set_ylabel('Translation [m]')
-ax.grid()
-ax.legend()
+for i in range(3):
+    axes[i].plot(time, a_pre[:, i+4], '-', color=f'C{i*2}',   label='pre')
+    axes[i].plot(time, a_out[:, i+4], '-', color=f'C{i*2+1}', label='out')
+    axes[i].set_ylabel(trans_labels[i])
+    axes[i].grid()
+    axes[i].legend(fontsize=8, loc='center right')
+axes[-1].set_xlabel('Time [s]')
+plt.tight_layout()
 
 # --- XY trajectory ---
 fig, ax = plt.subplots()
@@ -64,15 +68,17 @@ ax3d.set_ylim(a_out[:, 5].min() - pad, a_out[:, 5].max() + pad)
 ax3d.set_zlim(a_out[:, 6].min() - pad, a_out[:, 6].max() + pad)
 
 # --- Velocity (j=4) ---
-fig, ax = plt.subplots()
+vel_labels = ['vx [m/s]', 'vy [m/s]', 'vz [m/s]']
+fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
 fig.suptitle('Velocity')
-for i in range(1, 4):
-    ax.plot(time, a_pre[:, i+4*3], '-', label=lab_pre[i])
-    ax.plot(time, a_out[:, i+4*3], '-', label=lab_out[i])
-ax.set_xlabel('Time [s]')
-ax.set_ylabel('Velocity [m/s]')
-ax.grid()
-ax.legend()
+for i in range(3):
+    axes[i].plot(time, a_pre[:, i+13], '-', color=f'C{i*2}',   label='pre')
+    axes[i].plot(time, a_out[:, i+13], '-', color=f'C{i*2+1}', label='out')
+    axes[i].set_ylabel(vel_labels[i])
+    axes[i].grid()
+    axes[i].legend(fontsize=8, loc='center right')
+axes[-1].set_xlabel('Time [s]')
+plt.tight_layout()
 
 # --- bg (j=5) ---
 fig, ax = plt.subplots()
@@ -126,7 +132,7 @@ ax.legend()
 #             diff = (diff + 180) % 360 - 180
 #         axes[i].plot(time, diff, '-', color=f'C{i}', label=ylabels[i])
 #         axes[i].set_ylabel(ylabels[i])
-#         axes[i].legend(fontsize=8)
+#         axes[i].legend(fontsize=8, loc='center right')
 #         axes[i].grid()
 #     axes[-1].set_xlabel('Time [s]')
 #     plt.tight_layout()
@@ -146,7 +152,7 @@ for i in range(3):
 for i in range(2):
     axs[i].grid()
     axs[i].legend()
-plt.grid()
+plt.tight_layout(h_pad=2.0)
 
 # #### Draw time calculation
 # plt.figure(3)
@@ -195,42 +201,54 @@ try:
     pos = np.loadtxt(os.path.join(_dir, 'pos_log.txt'))
     if pos.ndim == 1:
         pos = pos.reshape(1, -1)
-    # pos columns: 0..24 state fields, then 36 covariance values (row-major 6x6)
-    if pos.shape[1] >= 25 + 36:
-        time_pos = pos[:, 0]
-        # apply same time filter used above (use end_time if defined)
-        # mask_pos = (time_pos >= start_time) & (time_pos <= end_time)
-        # cov_flat = pos[mask_pos, 25:25+36]
-        # t_cov = time_pos[mask_pos]
-        cov_flat = pos[:, 25:25+36]
+    # pos columns: 0..24 state fields
+    # cols 25-47: P diagonal (23 values):
+    #   pos[0-2], rot[3-5], extr_R[6-8], extr_T[9-11], vel[12-14], bg[15-17], ba[18-20], grav[21-22]
+    # cols 48-50: n_pts, mean_res, cost
+    # cols 51-86: H^T*H (6x6 row-major)
+    N_P = 23
+    COL_P     = 25
+    COL_INFO  = COL_P + N_P          # 48
+    COL_HMAT  = COL_INFO + 3         # 51
+
+    time_pos = pos[:, 0]
+
+    if pos.shape[1] >= COL_P + N_P:
         t_cov = time_pos
-        if cov_flat.size > 0:
-            cov = cov_flat.reshape(-1, 6, 6)
-            # diagonal elements (following printed row-major order)
-            diag = np.array([cov[:, i, i] for i in range(6)])
-            fig2, ax2 = plt.subplots(2,3, figsize=(12,6))
-            ax2 = ax2.ravel()
-            labels = ['cov_x','cov_y','cov_z','cov_roll','cov_pitch','cov_yaw']
-            for i in range(6):
-                ax2[i].plot(t_cov, diag[i], '-', label=labels[i])
-                ax2[i].set_title(labels[i])
-                ax2[i].grid()
-                ax2[i].legend()
-            fig2.suptitle('Pose covariance diagonals')
-            plt.tight_layout()
-        else:
-            print('No covariance data found in Log/pos_log.txt for the requested time range.')
+        diag  = pos[:, COL_P:COL_P + N_P]   # shape (N, 23)
+        groups = [
+            ('pos',    ['x','y','z'],           slice(0, 3)),
+            ('rot',    ['x','y','z'],           slice(3, 6)),
+            ('extr_R', ['x','y','z'],           slice(6, 9)),
+            ('extr_T', ['x','y','z'],           slice(9, 12)),
+            ('vel',    ['x','y','z'],           slice(12, 15)),
+            ('bg',     ['x','y','z'],           slice(15, 18)),
+            ('ba',     ['x','y','z'],           slice(18, 21)),
+            ('grav',   ['1','2'],               slice(21, 23)),
+        ]
+        fig2, axes_cov = plt.subplots(2, 4, figsize=(16, 6))
+        axes_cov = axes_cov.ravel()
+        for gi, (name, sublabels, sl) in enumerate(groups):
+            ax = axes_cov[gi]
+            for k, lbl in enumerate(sublabels):
+                ax.plot(t_cov, diag[:, sl][:, k], label=lbl)
+            ax.set_title(f'P diag — {name}')
+            ax.set_xlabel('Time [s]')
+            ax.legend(fontsize=7)
+            ax.grid()
+        fig2.suptitle('State covariance diagonal (full state)')
+        plt.tight_layout()
     else:
-        print('Log/pos_log.txt does not contain covariance columns (need >=61 columns per line).')
+        print('Log/pos_log.txt does not contain P diagonal columns (need >=48 columns).')
 
     # --- Information matrix analysis ---
-    # cols: 61=n_pts, 62=mean_res, 63=cost, 64-99=H^T*H (6x6 row-major)
-    if pos.shape[1] >= 61 + 3 + 36:
+    # cols 48=n_pts, 49=mean_res, 50=cost, 51-86=H^T*H (6x6 row-major)
+    if pos.shape[1] >= COL_HMAT + 36:
         t_info   = time_pos
-        n_pts    = pos[:, 61]
-        mean_res = pos[:, 62]
-        cost     = pos[:, 63]
-        info_flat = pos[:, 64:100]  # (N, 36)
+        n_pts    = pos[:, COL_INFO]
+        mean_res = pos[:, COL_INFO + 1]
+        cost     = pos[:, COL_INFO + 2]
+        info_flat = pos[:, COL_HMAT:COL_HMAT + 36]  # (N, 36)
         info_mats = info_flat.reshape(-1, 6, 6)
 
         # Compute eigenvalues and eigenvectors per timestep
@@ -252,12 +270,15 @@ try:
         fig3.suptitle('IEKF Information Matrix Analysis')
 
         axs[0, 0].plot(t_info, n_pts)
+        axs[0, 0].axhline(n_pts.mean(), color='r', ls='--', lw=1, label='mean %.0f' % n_pts.mean())
         axs[0, 0].set_title('Effective Points')
         axs[0, 0].set_xlabel('Time [s]')
+        axs[0, 0].legend(fontsize=8)
         axs[0, 0].grid()
 
         # axs[0, 1].plot(t_info, mean_res, label='mean residual [m]')
-        axs[0, 1].plot(t_info, cost,     label='cost (sum sq res)')
+        axs[0, 1].plot(t_info, cost, label='cost (sum sq res)')
+        axs[0, 1].axhline(cost.mean(), color='r', ls='--', lw=1, label='mean %.3g' % cost.mean())
         axs[0, 1].set_title('Residuals')
         axs[0, 1].set_xlabel('Time [s]')
         axs[0, 1].legend()
@@ -271,9 +292,12 @@ try:
         axs[1, 0].set_yscale('log')
         axs[1, 0].legend()
         axs[1, 0].grid()
+
         axs[1, 1].plot(t_info, cond)
+        axs[1, 1].axhline(cond.mean(), color='r', ls='--', lw=1, label='mean %.3g' % cond.mean())
         axs[1, 1].set_title('Condition Number (eig_min / eig_max)')
         axs[1, 1].set_xlabel('Time [s]')
+        axs[1, 1].legend(fontsize=8)
         axs[1, 1].grid()
 
         plt.tight_layout()
@@ -289,63 +313,98 @@ try:
         axs4.grid()
         plt.tight_layout()
 
-        # --- Eigenvector heatmaps: one per xyz direction, picked at its peak dominance time ---
+        # --- Eigenvector heatmaps: X, Y, Z — sorted by peak time ---
         # H^T*H cols: 0=pos_x, 1=pos_y, 2=pos_z, 3=rot_x, 4=rot_y, 5=rot_z
         # Reorder to rot-first (paper style): [3,4,5,0,1,2] → Rx,Ry,Rz,X,Y,Z
         reorder    = [3, 4, 5, 0, 1, 2]
         col_labels = ['Rx', 'Ry', 'Rz', 'X', 'Y', 'Z']
-        xyz_labels = ['X', 'Y', 'Z']
-        xyz_cols   = [0, 1, 2]   # original column indices for pos_x, pos_y, pos_z
 
         from matplotlib.colors import PowerNorm
-        import matplotlib.colorbar as mcolorbar
         gamma = 0.35   # <1 spreads low values; raise toward 1.0 for more linear
-
-        # 4 columns: 3 heatmaps + 1 narrow colorbar column
-        fig_h, axes_h = plt.subplots(1, 4, figsize=(12, 5),
-                                     gridspec_kw={'width_ratios': [4, 4, 4, 0.4]})
-        fig_h.suptitle('Eigenvector heatmaps at peak X / Y / Z dominance in weakest eigenvector\n'
-                        '(rows = v1..v6 ascending eigenvalue, cols = Rx Ry Rz X Y Z)', fontsize=9)
-
         norm = PowerNorm(gamma=gamma, vmin=0, vmax=1)
 
-        for panel, (xyz_label, orig_col) in enumerate(zip(xyz_labels, xyz_cols)):
-            peak_idx = int(np.argmax(np.abs(weakest_vec[:, orig_col])))
+        # (label, weakest_vec column index)
+        panel_defs = [('X', 0), ('Y', 1), ('Z', 2)]
 
-            mat = info_mats[peak_idx][:, reorder][reorder, :]
-            vals, vecs = np.linalg.eigh(mat)
-            data = np.abs(vecs.T)          # row i = eigenvector i (ascending)
+        # Compute peak time index for each panel, then sort by time
+        panels = sorted(
+            [(label, col, int(np.argmax(np.abs(weakest_vec[:, col]))))
+             for label, col in panel_defs],
+            key=lambda x: t_info[x[2]]
+        )
 
-            ax = axes_h[panel]
-            im = ax.imshow(data, cmap='Greys_r', norm=norm, aspect='auto')
+        # # 4 columns: 3 heatmaps + 1 narrow colorbar column
+        # fig_h, axes_h = plt.subplots(1, 4, figsize=(12, 5),
+        #                              gridspec_kw={'width_ratios': [4, 4, 4, 0.4]})
+        # fig_h.suptitle('Eigenvector heatmaps at peak X / Y / Z dominance\n'
+        #                '(sorted by time — rows = v1..v6 ascending eigenvalue, cols = Rx Ry Rz X Y Z)', fontsize=9)
+        #
+        # for panel, (label, orig_col, peak_idx) in enumerate(panels):
+        #     mat = info_mats[peak_idx][:, reorder][reorder, :]
+        #     vals, vecs = np.linalg.eigh(mat)
+        #     data = np.abs(vecs.T)          # row i = eigenvector i (ascending)
+        #
+        #     ax = axes_h[panel]
+        #     im = ax.imshow(data, cmap='Greys_r', norm=norm, aspect='auto')
+        #
+        #     # red separator at largest eigenvalue gap
+        #     if vals[-1] > 1e-10:
+        #         ratios = np.diff(np.log10(np.clip(vals, 1e-10, None)))
+        #         gap = int(np.argmax(ratios))
+        #         ax.axhline(gap + 0.5, color='red', lw=1.2)
+        #
+        #     ax.set_title(f'{label} dominant  t={t_info[peak_idx]:.2f}s', fontsize=8)
+        #     ax.set_xticks(range(6))
+        #     ax.set_xticklabels(col_labels, fontsize=7, rotation=45)
+        #     ax.set_yticks(range(6))
+        #     if panel == 0:
+        #         ax.set_yticklabels(
+        #             [f'$v_{{{i+1}}},\\ \\lambda_{{{i+1}}}={vals[i]:.0f}$' for i in range(6)], fontsize=7)
+        #     else:
+        #         ax.set_yticklabels(
+        #             [f'{vals[i]:.0f}' for i in range(6)], fontsize=7)
+        #
+        # # colorbar with tick marks at representative |component| values
+        # cbar = fig_h.colorbar(im, cax=axes_h[3])
+        # cbar.set_label('|component|', fontsize=7)
+        # cbar.set_ticks([0, 0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 1.0])
+        # cbar.ax.tick_params(labelsize=6)
+        #
+        # plt.tight_layout()
 
-            # red separator at largest eigenvalue gap
-            if vals[-1] > 1e-10:
-                ratios = np.diff(np.log10(np.clip(vals, 1e-10, None)))
-                gap = int(np.argmax(ratios))
-                ax.axhline(gap + 0.5, color='red', lw=1.2)
+        # --- Heatmap at t=688s (degenerate scan) ---
+        THRESH = 300
+        degen_t = 688.0
+        degen_idx_688 = int(np.argmin(np.abs(t_info - degen_t)))
 
-            ax.set_title(f'{xyz_label} dominant  t={t_info[peak_idx]:.2f}s', fontsize=8)
-            ax.set_xticks(range(6))
-            ax.set_xticklabels(col_labels, fontsize=7, rotation=45)
-            ax.set_yticks(range(6))
-            if panel == 0:
-                ax.set_yticklabels(
-                    [f'v{i+1}  {vals[i]:.0f}' for i in range(6)], fontsize=7)
-            else:
-                ax.set_yticklabels(
-                    [f'{vals[i]:.0f}' for i in range(6)], fontsize=7)
+        fig_d, axes_d = plt.subplots(1, 2, figsize=(5, 5),
+                                     gridspec_kw={'width_ratios': [4, 0.4]})
+        fig_d.suptitle(f'Components of eigenvectors at t={degen_t}s (4 eigenvalues < {THRESH})', fontsize=9)
 
-        # colorbar with tick marks at representative |component| values
-        cbar = fig_h.colorbar(im, cax=axes_h[3])
-        cbar.set_label('|component|', fontsize=7)
-        cbar.set_ticks([0, 0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 1.0])
-        cbar.ax.tick_params(labelsize=6)
+        mat_d = info_mats[degen_idx_688][:, reorder][reorder, :]
+        vals_d, vecs_d = np.linalg.eigh(mat_d)
+        data_d = np.abs(vecs_d.T)
 
+        ax_d = axes_d[0]
+        im_d = ax_d.imshow(data_d, cmap='Greys_r', norm=norm, aspect='auto')
+
+        if vals_d[-1] > 1e-10:
+            ratios = np.diff(np.log10(np.clip(vals_d, 1e-10, None)))
+            ax_d.axhline(int(np.argmax(ratios)) + 0.5, color='red', lw=1.2)
+
+        n_below = int(np.sum(vals_d < THRESH))
+        ax_d.set_xticks(range(6))
+        ax_d.set_xticklabels(col_labels, fontsize=7, rotation=45)
+        ax_d.set_yticks(range(6))
+        ax_d.set_yticklabels([f'$v_{{{i+1}}},\\ \\lambda_{{{i+1}}}={vals_d[i]:.0f}$' for i in range(6)], fontsize=7)
+
+        cbar_d = fig_d.colorbar(im_d, cax=axes_d[1])
+        cbar_d.set_ticks([0, 0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 1.0])
+        cbar_d.ax.tick_params(labelsize=6)
         plt.tight_layout()
 
     else:
-        print('Log/pos_log.txt does not contain info matrix columns (need >=100 columns per line).')
+        print(f'Log/pos_log.txt does not contain info matrix columns (need >={COL_HMAT + 36} columns).')
 
 except Exception as e:
     print('Could not load Log/pos_log.txt:', e)
@@ -412,28 +471,28 @@ try:
     axes[1].grid()
     plt.tight_layout()
 
-    # --- Point cloud and tree sizes ---
-    scan_pts = tlog[:, 2]
-    add_pts  = tlog[:, 9]
-    tree_st  = tlog[:, 7]
-    tree_end = tlog[:, 8]
+    # # --- Point cloud and tree sizes ---
+    # scan_pts = tlog[:, 2]
+    # add_pts  = tlog[:, 9]
+    # tree_st  = tlog[:, 7]
+    # tree_end = tlog[:, 8]
 
-    fig, axes = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
-    fig.suptitle('Point Cloud & Tree Sizes (queue=10)')
+    # fig, axes = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
+    # fig.suptitle('Point Cloud & Tree Sizes (queue=10)')
 
-    axes[0].plot(t_log, scan_pts, lw=0.7, label='scan points')
-    axes[0].plot(t_log, add_pts,  lw=0.7, label='added to tree')
-    axes[0].set_ylabel('Points')
-    axes[0].legend(fontsize=8)
-    axes[0].grid()
+    # axes[0].plot(t_log, scan_pts, lw=0.7, label='scan points')
+    # axes[0].plot(t_log, add_pts,  lw=0.7, label='added to tree')
+    # axes[0].set_ylabel('Points')
+    # axes[0].legend(fontsize=8)
+    # axes[0].grid()
 
-    axes[1].plot(t_log, tree_st,  lw=0.7, label='tree size (start)')
-    axes[1].plot(t_log, tree_end, lw=0.7, label='tree size (end)')
-    axes[1].set_ylabel('Nodes')
-    axes[1].set_xlabel('Time [s]')
-    axes[1].legend(fontsize=8)
-    axes[1].grid()
-    plt.tight_layout()
+    # axes[1].plot(t_log, tree_st,  lw=0.7, label='tree size (start)')
+    # axes[1].plot(t_log, tree_end, lw=0.7, label='tree size (end)')
+    # axes[1].set_ylabel('Nodes')
+    # axes[1].set_xlabel('Time [s]')
+    # axes[1].legend(fontsize=8)
+    # axes[1].grid()
+    # plt.tight_layout()
 
 except Exception as e:
     print('Could not load fast_lio_time_log.csv:', e)

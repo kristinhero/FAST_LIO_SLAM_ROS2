@@ -175,11 +175,11 @@ inline void dump_lio_state_to_log(FILE *fp)
     fprintf(fp, "%lf %lf %lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g  
     fprintf(fp, "%lf %lf %lf ", state_point.ba(0), state_point.ba(1), state_point.ba(2));    // Bias_a  
     fprintf(fp, "%lf %lf %lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // Gravity
-    // Append 6x6 pose covariance (row-major) using same mapping as publish_odometry
-    // odom.pose.covariance[i*6 + j] is filled from P(k, ...)
+    // Full state covariance diagonal (23 values):
+    // pos[0-2], rot[3-5], extr_R[6-8], extr_T[9-11], vel[12-14], bg[15-17], ba[18-20], grav[21-22]
     auto P = kf.get_P();
-    for (int i = 0; i < 6; i++)
-        fprintf(fp, "%e %e %e %e %e %e ", P(i,0), P(i,1), P(i,2), P(i,3), P(i,4), P(i,5));
+    for (int i = 0; i < P.rows(); i++)
+        fprintf(fp, "%e ", P(i,i));
 
     // Information matrix: H_pose^T * H_pose (pos cols 0-2, rot cols 3-5), logged row-major
     double cost = 0.0;
