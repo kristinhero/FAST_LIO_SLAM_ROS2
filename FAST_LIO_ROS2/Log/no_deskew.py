@@ -1,7 +1,20 @@
 import os
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
+
+from plot_style import apply_style, fig_size, save, mark
+
+# --- CLI / styling ---
+parser = argparse.ArgumentParser(
+    description='Plot deskew vs no-deskew comparison (interactive, or save to PDF).')
+parser.add_argument('--out-dir', default=None,
+                    help='If set, save mapped figures to <out-dir>/<stem>.pdf '
+                         'and suppress plt.show(). If unset, behavior is interactive.')
+args = parser.parse_args()
+
+apply_style()
 
 _base  = os.path.dirname(os.path.abspath(__file__))
 dk_dir = os.path.join(_base, 'Log_curved_tank_fast')
@@ -26,7 +39,6 @@ state_cfg = [
     (1, 'Translation',           'm'),
     (4, 'Velocity',              'm/s'),
     (5, 'Bias of Gyroscope',     'rad/s'),
-    (6, 'Bias of Accelerometer', 'm/s²'),
     (7, 'Estimated Gravity',     'm/s²'),
 ]
 
@@ -43,9 +55,24 @@ for j, title, unit in state_cfg:
     ax.legend(fontsize=8, ncol=2)
     plt.tight_layout()
 
+# ── Bias of Accelerometer — magnitude only (deskew vs no-deskew), full width ──────
+ba_dk = np.linalg.norm(dk_out[:, 19:22], axis=1)   # accel-bias columns (j=6): 19,20,21
+ba_nd = np.linalg.norm(nd_out[:, 19:22], axis=1)
+fig, ax = plt.subplots(figsize=fig_size(1.0, 0.32))
+fig.suptitle('Bias of Accelerometer')
+mark(fig, 'B_a')
+ax.plot(dk_t, ba_dk, color='C0', label='deskew')
+ax.plot(nd_t, ba_nd, color='C1', label='no-deskew')
+ax.set_xlabel('Time [s]')
+ax.set_ylabel('Bias [m/s$^2$]')
+ax.grid()
+ax.legend(fontsize=8)
+plt.tight_layout()
+
 # ── XY trajectory ──────────────────────────────────────────────────────────────
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=fig_size(0.7, 0.8))   # shorter canvas: data is wider than tall, avoids title gap
 fig.suptitle('Estimated Trajectory (XY)')
+mark(fig, 'Trajectory')
 ax.plot(dk_out[:, 4], dk_out[:, 5], color='C0', lw=1.2, label='deskew')
 ax.plot(nd_out[:, 4], nd_out[:, 5], color='C1', lw=1.2, label='no-deskew')
 ax.set_xlabel('x [m]')
@@ -123,94 +150,80 @@ def load_pos(d):
     p = np.loadtxt(os.path.join(d, 'pos_log.txt'))
     return p.reshape(1, -1) if p.ndim == 1 else p
 
+def _layout(pos):
+    # auto-detect column layout (matches plot.py): full 6x6 cov (N_P=36) or diagonal (N_P=23)
+    n_p = pos.shape[1] - 25 - 3 - 36
+    return n_p, 25 + n_p, 25 + n_p + 3        # N_P, COL_INFO (n_pts,res,cost), COL_HMAT (6x6)
+
+def _pose_diag(pos):
+    n_p = _layout(pos)[0]
+    if n_p == 36:
+        cov = pos[:, 25:61].reshape(-1, 6, 6)
+        return np.array([cov[:, i, i] for i in range(6)])
+    return pos[:, 25:31].T                     # diagonal layout: first 6 entries = pose block
+
 try:
     dk_pos = load_pos(dk_dir)
     nd_pos = load_pos(nd_dir)
     dk_tp  = norm_t(dk_pos[:, 0])
     nd_tp  = norm_t(nd_pos[:, 0])
+    _, dk_ci, dk_ch = _layout(dk_pos)
+    _, nd_ci, nd_ch = _layout(nd_pos)
 
-    if dk_pos.shape[1] >= 61 and nd_pos.shape[1] >= 61:
-        cov_labels = ['cov_x', 'cov_y', 'cov_z', 'cov_roll', 'cov_pitch', 'cov_yaw']
-        fig_c, ax_c = plt.subplots(2, 3, figsize=(12, 6))
-        fig_c.suptitle('Pose covariance diagonals  |  C0 = deskew,  C1 = no-deskew')
-        ax_c = ax_c.ravel()
-        for run_pos, run_t, color, lbl in [
-            (dk_pos, dk_tp, 'C0', 'deskew'),
-            (nd_pos, nd_tp, 'C1', 'no-deskew'),
-        ]:
-            cov  = run_pos[:, 25:61].reshape(-1, 6, 6)
-            diag = np.array([cov[:, i, i] for i in range(6)])
-            for i in range(6):
-                ax_c[i].plot(run_t, diag[i], color=color, label=lbl)
-                ax_c[i].axhline(diag[i].mean(), color=color, ls='--', lw=1, label=f'{lbl} mean')
-                ax_c[i].set_title(cov_labels[i])
-                ax_c[i].grid(True)
-        ax_c[2].legend(fontsize=7)
-        plt.tight_layout()
+    # ── Pose covariance diagonals (not saved) ─ 6 pose variances per run ──────────
+    cov_labels = ['x', 'y', 'z', 'roll', 'pitch', 'yaw']
+    fig_c, ax_c = plt.subplots(2, 3, figsize=(12, 6))
+    fig_c.suptitle('Pose covariance diagonals  |  C0 = deskew,  C1 = no-deskew')
+    ax_c = ax_c.ravel()
+    for diag, run_t, color, lbl in [
+        (_pose_diag(dk_pos), dk_tp, 'C0', 'deskew'),
+        (_pose_diag(nd_pos), nd_tp, 'C1', 'no-deskew'),
+    ]:
+        for i in range(6):
+            ax_c[i].plot(run_t, diag[i], color=color, label=lbl)
+            ax_c[i].set_title(cov_labels[i]); ax_c[i].grid(True)
+    ax_c[2].legend(fontsize=7)
+    plt.tight_layout()
 
-    if dk_pos.shape[1] >= 100 and nd_pos.shape[1] >= 100:
-        def compute_info(pos):
-            info_mats = pos[:, 64:100].reshape(-1, 6, 6)
-            n = len(info_mats)
-            eig_vals = np.zeros((n, 6))
-            eig_vecs = np.zeros((n, 6, 6))
-            for k in range(n):
-                vals, vecs = np.linalg.eigh(info_mats[k])
-                eig_vals[k] = vals
-                eig_vecs[k] = vecs
-            cond = np.where(eig_vals[:, 5] > 1e-10,
-                            eig_vals[:, 0] / eig_vals[:, 5], 0.0)
-            return eig_vals, eig_vecs, cond
+    # ── Effective points + residuals (deskew vs no-deskew), full width ────────────
+    # Condition number removed per request.
+    fig_i, axs_i = plt.subplots(1, 2, figsize=fig_size(1.0, 0.45))
+    mark(fig_i, 'IEKF')   # title carried by the LaTeX caption
 
-        dk_eig_vals, dk_eig_vecs, dk_cond = compute_info(dk_pos)
-        nd_eig_vals, nd_eig_vecs, nd_cond = compute_info(nd_pos)
+    # no-deskew plotted first, deskew on top, so the deskew trace isn't hidden
+    dk_npts = dk_pos[:, dk_ci]; nd_npts = nd_pos[:, nd_ci]
+    axs_i[0].plot(nd_tp, nd_npts, color='C1', label='no-deskew')
+    axs_i[0].plot(dk_tp, dk_npts, color='C0', label='deskew')
+    axs_i[0].axhline(nd_npts.mean(), color='C1', ls='--', lw=1, label='mean %.0f' % nd_npts.mean())
+    axs_i[0].axhline(dk_npts.mean(), color='C0', ls='--', lw=1, label='mean %.0f' % dk_npts.mean())
+    axs_i[0].set_title('Effective Points')
+    axs_i[0].set_xlabel('Time [s]'); axs_i[0].grid(); axs_i[0].legend(fontsize=7)
 
-        fig_i, axs_i = plt.subplots(1, 3, figsize=(16, 4))
-        fig_i.suptitle('IEKF Information Matrix  |  C0 = deskew,  C1 = no-deskew')
+    dk_cost = dk_pos[:, dk_ci + 2]; nd_cost = nd_pos[:, nd_ci + 2]
+    axs_i[1].plot(nd_tp, nd_cost, color='C1', label='no-deskew')
+    axs_i[1].plot(dk_tp, dk_cost, color='C0', label='deskew')
+    axs_i[1].set_title('Residuals')
+    axs_i[1].set_xlabel('Time [s]'); axs_i[1].grid(); axs_i[1].legend(fontsize=7)
+    plt.tight_layout()
 
-        dk_npts = dk_pos[:, 61]; nd_npts = nd_pos[:, 61]
-        axs_i[0].plot(dk_tp, dk_npts, color='C0', label='deskew')
-        axs_i[0].plot(nd_tp, nd_npts, color='C1', label='no-deskew')
-        axs_i[0].axhline(dk_npts.mean(), color='C0', ls='--', lw=1, label='dk mean %.0f' % dk_npts.mean())
-        axs_i[0].axhline(nd_npts.mean(), color='C1', ls='--', lw=1, label='nd mean %.0f' % nd_npts.mean())
-        axs_i[0].set_title('Effective Points')
-        axs_i[0].grid(); axs_i[0].legend(fontsize=7)
-
-        dk_cost = dk_pos[:, 63]; nd_cost = nd_pos[:, 63]
-        axs_i[1].plot(dk_tp, dk_cost, color='C0', label='deskew')
-        axs_i[1].plot(nd_tp, nd_cost, color='C1', label='no-deskew')
-        axs_i[1].axhline(dk_cost.mean(), color='C0', ls='--', lw=1, label='dk mean %.3g' % dk_cost.mean())
-        axs_i[1].axhline(nd_cost.mean(), color='C1', ls='--', lw=1, label='nd mean %.3g' % nd_cost.mean())
-        axs_i[1].set_title('Cost (sum sq res)')
-        axs_i[1].grid(); axs_i[1].legend(fontsize=7)
-
-        axs_i[2].plot(dk_tp, dk_cond, color='C0', label='deskew')
-        axs_i[2].plot(nd_tp, nd_cond, color='C1', label='no-deskew')
-        axs_i[2].axhline(dk_cond.mean(), color='C0', ls='--', lw=1, label='dk mean %.3g' % dk_cond.mean())
-        axs_i[2].axhline(nd_cond.mean(), color='C1', ls='--', lw=1, label='nd mean %.3g' % nd_cond.mean())
-        axs_i[2].set_title('Condition Number (eig_min / eig_max)')
-        axs_i[2].grid(); axs_i[2].legend(fontsize=7)
-
-        for ax in axs_i:
-            ax.set_xlabel('Time [s]')
-        plt.tight_layout()
-
-        # Weakest eigenvector components — side by side
-        pose_labels = ['pos_x', 'pos_y', 'pos_z', 'rot_x', 'rot_y', 'rot_z']
-        fig_w, axes_w = plt.subplots(1, 2, figsize=(14, 4), sharey=True)
-        fig_w.suptitle('Weakest Eigenvector Components (eig_1 direction)')
-        for ax, eig_vecs, run_t, label in [
-            (axes_w[0], dk_eig_vecs, dk_tp, 'deskew'),
-            (axes_w[1], nd_eig_vecs, nd_tp, 'no-deskew'),
-        ]:
-            weakest = eig_vecs[:, :, 0]
-            for i in range(6):
-                ax.plot(run_t, np.abs(weakest[:, i]), label=pose_labels[i])
-            ax.set_title(label)
-            ax.set_xlabel('Time [s]')
-            ax.set_ylabel('|component|')
-            ax.grid(); ax.legend(fontsize=7)
-        plt.tight_layout()
+    # ── Weakest eigenvector components (not saved) ────────────────────────────────
+    def _weakest(pos, ch):
+        info = pos[:, ch:ch + 36].reshape(-1, 6, 6)
+        return np.array([np.linalg.eigh(m)[1][:, 0] for m in info])   # eig_1 eigenvector per scan
+    pose_labels = ['pos_x', 'pos_y', 'pos_z', 'rot_x', 'rot_y', 'rot_z']
+    fig_w, axes_w = plt.subplots(1, 2, figsize=(14, 4), sharey=True)
+    fig_w.suptitle('Weakest Eigenvector Components (eig_1 direction)')
+    for ax, weak, run_t, label in [
+        (axes_w[0], _weakest(dk_pos, dk_ch), dk_tp, 'deskew'),
+        (axes_w[1], _weakest(nd_pos, nd_ch), nd_tp, 'no-deskew'),
+    ]:
+        for i in range(6):
+            ax.plot(run_t, np.abs(weak[:, i]), label=pose_labels[i])
+        ax.set_title(label)
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('|component|')
+        ax.grid(); ax.legend(fontsize=7)
+    plt.tight_layout()
 
 except Exception as e:
     print('Could not load pos_log.txt:', e)
@@ -385,4 +398,13 @@ except Exception as e:
 # except Exception as e:
 #     print('Could not generate no-deskew heatmap:', e)
 
-plt.show()
+if args.out_dir:
+    for _num in plt.get_fignums():
+        _fig = plt.figure(_num)
+        _stem = getattr(_fig, '_save_stem', None)
+        if _stem is None:
+            continue
+        save(_fig, os.path.join(args.out_dir, _stem))
+    print('Saved figures to', args.out_dir)
+else:
+    plt.show()

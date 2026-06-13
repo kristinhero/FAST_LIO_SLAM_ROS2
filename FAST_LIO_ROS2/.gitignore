@@ -4,6 +4,8 @@ Log/*.txt
 Log/*.csv
 Log/*.pdf
 Log/*.pcd
+Log/figures/*
+Log/fonts/*
 .vscode/c_cpp_properties.json
 .vscode/settings.json
 PCD/*.pcd

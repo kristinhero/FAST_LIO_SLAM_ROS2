@@ -1,16 +1,29 @@
 import os
 import sys
 import glob
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator
+from matplotlib.ticker import MultipleLocator, MaxNLocator
 
+from plot_style import apply_style, fig_size, save, mark
+
+# --- CLI / styling ---
+parser = argparse.ArgumentParser(
+    description='Plot spike/debug diagnostics (interactive, or save to PDF).')
+parser.add_argument('--out-dir', default=None,
+                    help='If set, save mapped figures to <out-dir>/<stem>.pdf '
+                         'and suppress interactive display. If unset, behavior is interactive.')
+# parse_known_args so the positional t_start/t_end (sys.argv[1:3]) still work
+args, _ = parser.parse_known_args()
+
+apply_style()
 
 _dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'spike')
 
 # --- Time window: edit these or pass as args ---
-t_start = float(sys.argv[1]) if len(sys.argv) > 1 else 230.0
-t_end   = float(sys.argv[2]) if len(sys.argv) > 2 else 240.0
+t_start = float(sys.argv[1]) if len(sys.argv) > 1 else 232.0
+t_end   = float(sys.argv[2]) if len(sys.argv) > 2 else 238.0
 
 # --- Load data ---
 pre = np.loadtxt(os.path.join(_dir, 'mat_pre.txt'))
@@ -87,40 +100,42 @@ t_pos_p, pos_p    = _nan_gaps(t_pos, pos_w)
 
 n = min(len(tp), len(to))
 
-# --- Figure 1: Attitude pre vs out ---
-fig, axes = plt.subplots(3, 1, figsize=(12, 7), sharex=True)
-fig.suptitle('Attitude  (pre=dashed, out=solid)')
-labels = ['roll [deg]', 'pitch [deg]', 'yaw [deg]']
-labeled = False
-spike_labeled = False
+# --- Figure 1: Attitude pre vs out (roll/pitch/yaw) ---
+fig, axes = plt.subplots(3, 1, figsize=fig_size(1.0, 0.7), sharex=True)
+mark(fig, 'Attitude')
+fig.suptitle('Attitude  (predicted = dashed, updated = solid)')
+att_labels = ['roll [deg]', 'pitch [deg]', 'yaw [deg]']
+labeled = spike_labeled = False
 for i in range(3):
-    axes[i].plot(tp_p, pre_p[:, i+1], '--', color='C%d' % i, label='pre')
-    axes[i].plot(to_p, out_p[:, i+1], '-',  color='C%d' % i, label='out')
+    axes[i].plot(tp_p, pre_p[:, i+1], '--', color='C%d' % i, label='pred.')
+    axes[i].plot(to_p, out_p[:, i+1], '-',  color='C%d' % i, label='upd.')
     labeled = _shade_gap(axes[i], labeled)
     spike_labeled = _mark_spike(axes[i], spike_labeled)
-    axes[i].set_ylabel(labels[i])
+    axes[i].set_ylabel(att_labels[i])
     axes[i].grid()
     axes[i].legend(fontsize=8)
 axes[-1].set_xlabel('Time [s]')
 _set_half_ticks(axes)
+fig.align_ylabels(axes)
 plt.tight_layout()
 
-# --- Figure 1b: Translation pre vs out ---
-fig, axes = plt.subplots(3, 1, figsize=(12, 7), sharex=True)
-fig.suptitle('Translation  (pre=dashed, out=solid)')
-labels_t = ['x [m]', 'y [m]', 'z [m]']
-labeled = False
-spike_labeled = False
+# --- Figure 1b: Position pre vs out (x/y/z) ---
+fig, axes = plt.subplots(3, 1, figsize=fig_size(1.0, 0.7), sharex=True)
+mark(fig, 'Position')
+fig.suptitle('Position  (predicted = dashed, updated = solid)')
+pos_labels = ['x [m]', 'y [m]', 'z [m]']
+labeled = spike_labeled = False
 for i in range(3):
-    axes[i].plot(tp_p, pre_p[:, i+4], '--', color='C%d' % i, label='pre')
-    axes[i].plot(to_p, out_p[:, i+4], '-',  color='C%d' % i, label='out')
+    axes[i].plot(tp_p, pre_p[:, i+4], '--', color='C%d' % i, label='pred.')
+    axes[i].plot(to_p, out_p[:, i+4], '-',  color='C%d' % i, label='upd.')
     labeled = _shade_gap(axes[i], labeled)
     spike_labeled = _mark_spike(axes[i], spike_labeled)
-    axes[i].set_ylabel(labels_t[i])
+    axes[i].set_ylabel(pos_labels[i])
     axes[i].grid()
     axes[i].legend(fontsize=8)
 axes[-1].set_xlabel('Time [s]')
 _set_half_ticks(axes)
+fig.align_ylabels(axes)
 plt.tight_layout()
 
 # --- Figure 2: IEKF correction magnitude ---
@@ -148,32 +163,24 @@ axes[-1].set_xlabel('Time [s]')
 _set_half_ticks(axes)
 plt.tight_layout()
 
-# --- Figure 3: Cost, residual, effective points ---
+# --- Figure 3: Scan registration — Effective Points + Residuals (matches plot.py / no_deskew.py) ---
 if pos_w.shape[1] >= 64:
-    n_pts    = pos_w[:, 61]
-    mean_res = pos_w[:, 62]
-    cost     = pos_w[:, 63]
-    tp3, cost_p    = _nan_gaps(t_pos, cost)
-    _,   res_p     = _nan_gaps(t_pos, mean_res)
-    _,   npts3_p   = _nan_gaps(t_pos, n_pts)
+    _ci = pos_w.shape[1] - 39          # auto-detect n_pts column (cost at +2)
+    tp3, npts3_p = _nan_gaps(t_pos, pos_w[:, _ci])
+    _,   cost_p  = _nan_gaps(t_pos, pos_w[:, _ci + 2])
 
-    fig, axes = plt.subplots(2, 1, figsize=(12, 5), sharex=True)
-    fig.suptitle('Scan registration quality')
-    labeled = False
-    spike_labeled = False
-    axes[0].plot(tp3, cost_p,  '-', color='C3')
-    labeled = _shade_gap(axes[0], labeled)
-    spike_labeled = _mark_spike(axes[0], spike_labeled)
-    axes[0].set_ylabel('Cost (sum sq residuals)')
-    axes[0].legend(fontsize=8)
-    axes[0].grid()
-    axes[1].plot(tp3, npts3_p, '-', color='C2')
-    labeled = _shade_gap(axes[1], labeled)
-    _mark_spike(axes[1], spike_labeled)
-    axes[1].set_ylabel('Effective points')
-    axes[1].grid()
-    axes[-1].set_xlabel('Time [s]')
-    _set_half_ticks(axes)
+    fig, axes = plt.subplots(1, 2, figsize=fig_size(1.0, 0.45))
+    mark(fig, 'Registration')
+    axes[0].plot(tp3, npts3_p, '-', color='C0')
+    _shade_gap(axes[0]); _mark_spike(axes[0])
+    axes[0].set_title('Effective Points')
+    axes[0].set_xlabel('Time [s]'); axes[0].grid(); axes[0].legend(fontsize=7)
+    axes[1].plot(tp3, cost_p, '-', color='C0')
+    _shade_gap(axes[1]); _mark_spike(axes[1])
+    axes[1].set_title('Residuals')
+    axes[1].set_xlabel('Time [s]'); axes[1].grid()
+    for ax in axes:                       # fewer x ticks — 0.5 s spacing is too dense here
+        ax.xaxis.set_major_locator(MaxNLocator(4))
     plt.tight_layout()
 
 # --- Figure 4: Position trajectory ---
@@ -214,8 +221,8 @@ ax.legend(fontsize=8)
 plt.tight_layout()
 
 # --- Figure: IMU dropout + stale feats_undistort evidence ---
-fig, (ax_imu, ax_pts) = plt.subplots(2, 1, figsize=(13, 6), sharex=True)
-fig.suptitle('IMU dropout and stale scan reuse', fontsize=11)
+fig, (ax_imu, ax_pts) = plt.subplots(2, 1, figsize=fig_size(1.0, 0.6), sharex=True)
+mark(fig, 'IMU_dropout')
 
 if os.path.exists(imu_log_path):
     bin_width = 0.5
@@ -223,11 +230,11 @@ if os.path.exists(imu_log_path):
     counts, edges = np.histogram(imu_tw, bins=bins)
     expected = 200.0 * bin_width
     ax_imu.bar(edges[:-1] + bin_width / 2, counts, width=bin_width * 0.85,
-               color='C2', alpha=0.75, label='processed IMU msgs')
+               color='C2', alpha=0.75, label='IMU messages')
     ax_imu.axhline(expected, color='k', linestyle='--', linewidth=1.0,
-                   label='expected (%d msgs / bin at 200 Hz)' % int(expected))
+                   label='200 Hz')
     _shade_gap(ax_imu, labeled=False)
-    ax_imu.set_ylabel('IMU msgs per 0.5 s bin')
+    ax_imu.set_ylabel('IMU messages / 0.5 s')
     ax_imu.legend(fontsize=8, loc='lower left')
     ax_imu.grid(axis='y', alpha=0.4)
     ax_imu.set_ylim(bottom=0)
@@ -238,7 +245,7 @@ else:
 npts_w = out[:, -1].astype(int)[mask_out]
 to_pts_p, npts_pts_p = _nan_gaps(to, npts_w.astype(float))
 ax_pts.plot(to_pts_p, npts_pts_p, 'o-', markersize=3, linewidth=1, color='C0',
-            label='feats_undistort point count')
+            label='Points in processed LiDAR scan')
 _shade_gap(ax_pts, labeled=True)
 
 # Show frozen count only if old (unfixed) data is present
@@ -247,16 +254,16 @@ if frozen_mask.any():
     vals_in_gap = npts_w[frozen_mask]
     if np.all(vals_in_gap == vals_in_gap[0]):
         ax_pts.axhline(int(vals_in_gap[0]), color='red', linestyle='--',
-                       linewidth=0.9, alpha=0.8,
-                       label='frozen count = %d (stale scan reused)' % int(vals_in_gap[0]))
+                       linewidth=0.9, alpha=0.8, label='5852')
 
 ax_pts.set_xlabel('Time [s]')
-ax_pts.set_ylabel('Points in scan')
+ax_pts.set_ylabel('Points in LiDAR scan')
 ax_pts.legend(fontsize=8, loc='lower left')
 ax_pts.grid(alpha=0.4)
 _mark_spike(ax_imu, False)
 _mark_spike(ax_pts, True)
 _set_half_ticks([ax_imu, ax_pts])
+fig.align_ylabels([ax_imu, ax_pts])
 plt.tight_layout()
 
 # --- Figure 5: Information matrix eigenvalues ---
@@ -501,4 +508,13 @@ if os.path.exists(scan_dbg_path):
 else:
     print('scan_dbg.txt not found — run the bag with debug_scan_en: true first')
 
-plt.show()
+if args.out_dir:
+    for _num in plt.get_fignums():
+        _fig = plt.figure(_num)
+        _stem = getattr(_fig, '_save_stem', None)
+        if _stem is None:
+            continue
+        save(_fig, os.path.join(args.out_dir, _stem))
+    print('Saved figures to', args.out_dir)
+else:
+    plt.show()

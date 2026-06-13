@@ -1,10 +1,58 @@
 # import matplotlib
 # matplotlib.use('Agg')
 import os
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
-_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),'Log_no_motion_deskew/curved_tank_fast') # adjust to your log directory
+from plot_style import apply_style, fig_size, save, mark
+
+# --- CLI / styling ---
+parser = argparse.ArgumentParser(
+    description='Plot FAST-LIO logs (interactive, or save figures to PDF).')
+parser.add_argument('--out-dir', default=None,
+                    help='If set, save mapped figures to <out-dir>/<stem>.pdf '
+                         'and suppress plt.show(). If unset, behavior is interactive.')
+parser.add_argument('--no-pre', action='store_true',
+                    help='Suppress dashed pre-update traces on state plots.')
+parser.add_argument('--log-dir', default='Log_no_motion_deskew/curved_tank_fast',
+                    help='Dataset directory (absolute, or relative to this script).')
+parser.add_argument('--heatmap-t', type=float, default=None,
+                    help='Timestamp [s] for the eigenvector heatmap. Default: per-dataset lookup, else 688.')
+parser.add_argument('--heatmap-thresh', type=float, default=None,
+                    help='Eigenvalue threshold annotated in the heatmap title. Default: per-dataset lookup, else 300.')
+args = parser.parse_args()
+
+apply_style()
+
+# Display name per dataset (used as the Registration figure title and heatmap prefix).
+DATASET_NAME = {
+    'Log_square_tank_slow': 'Slow-A',
+    'Log_square_tank_fast': 'Fast-A',
+    'Log_curved_tank_slow': 'Slow-B',
+    'Log_curved_tank_fast': 'Fast-B',
+}
+
+# Per-dataset eigenvector-heatmap scan used when --heatmap-* are not given.
+# Keyed by dataset directory name -> (timestamp [s], eigenvalue threshold).
+HEATMAP_BY_DATASET = {
+    'Log_curved_tank_fast': (687.4, 300.0),   # degenerate scan: 4 weak dirs (X, Y, Z + roll)
+    'Log_curved_tank_slow': (537.7, 2000.0),  # representative scan: 3 weak dirs (X, Y, Z)
+}
+HEATMAP_DEFAULT = (688.0, 300.0)
+
+# Figures saved at their full canvas width (no tight-crop) so they scale
+# identically when included at the same width in LaTeX (e.g. 0.5*textwidth).
+FIXED_WIDTH_STEMS = {'Trajectory', 'Trajectory_3D', 'Heatmap_eigen'}
+
+_dir = (args.log_dir if os.path.isabs(args.log_dir)
+        else os.path.join(os.path.dirname(os.path.abspath(__file__)), args.log_dir))
+
+# Resolve heatmap scan: explicit flag > per-dataset lookup > global default.
+_heat_t_def, _heat_thr_def = HEATMAP_BY_DATASET.get(os.path.basename(os.path.normpath(_dir)), HEATMAP_DEFAULT)
+heat_t = args.heatmap_t if args.heatmap_t is not None else _heat_t_def
+heat_thresh = args.heatmap_thresh if args.heatmap_thresh is not None else _heat_thr_def
+ds_name = DATASET_NAME.get(os.path.basename(os.path.normpath(_dir)), 'Registration Analysis')
 
 
 #######for ikfom
@@ -16,100 +64,123 @@ time=a_pre[:,0]
 
 # --- Attitude (j=0) ---
 att_labels = ['roll [deg]', 'pitch [deg]', 'yaw [deg]']
-fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
+pose_colors = ['tab:blue', 'tab:green', 'tab:orange']   # shared by Attitude, Position, Velocity
+fig, axes = plt.subplots(3, 1, figsize=fig_size(1.0, 0.7), sharex=True)
 fig.suptitle('Attitude')
+mark(fig, 'Attitude')
 for i in range(3):
-    axes[i].plot(time, a_pre[:, i+1], '-', color=f'C{i*2}',   label='pre')
-    axes[i].plot(time, a_out[:, i+1], '-', color=f'C{i*2+1}', label='out')
+    if not args.no_pre:
+        axes[i].plot(time, a_pre[:, i+1], '--', color=pose_colors[i], label='pre')
+    axes[i].plot(time, a_out[:, i+1], '-', color=pose_colors[i], label='out')
     axes[i].set_ylabel(att_labels[i])
     axes[i].grid()
-    axes[i].legend(fontsize=8, loc='center right')
+    if not args.no_pre:
+        axes[i].legend(fontsize=8, loc='center right')
 axes[-1].set_xlabel('Time [s]')
-plt.tight_layout()
+fig.align_ylabels(axes)
+plt.tight_layout(h_pad=0.3)
 
-# --- Translation (j=1) ---
+# --- Position (translation, j=1) ---
 trans_labels = ['x [m]', 'y [m]', 'z [m]']
-fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
-fig.suptitle('Translation')
+fig, axes = plt.subplots(3, 1, figsize=fig_size(1.0, 0.7), sharex=True)
+fig.suptitle('Position')
+mark(fig, 'Position')
 for i in range(3):
-    axes[i].plot(time, a_pre[:, i+4], '-', color=f'C{i*2}',   label='pre')
-    axes[i].plot(time, a_out[:, i+4], '-', color=f'C{i*2+1}', label='out')
+    if not args.no_pre:
+        axes[i].plot(time, a_pre[:, i+4], '--', color=pose_colors[i], label='pre')
+    axes[i].plot(time, a_out[:, i+4], '-', color=pose_colors[i], label='out')
     axes[i].set_ylabel(trans_labels[i])
     axes[i].grid()
-    axes[i].legend(fontsize=8, loc='center right')
+    if not args.no_pre:
+        axes[i].legend(fontsize=8, loc='center right')
 axes[-1].set_xlabel('Time [s]')
-plt.tight_layout()
+fig.align_ylabels(axes)
+plt.tight_layout(h_pad=0.3)
 
 # --- XY trajectory ---
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=fig_size(0.5, 1.0))   # author at 0.5*textwidth -> no LaTeX rescale
 fig.suptitle('Estimated Trajectory (XY)')
+mark(fig, 'Trajectory')
 ax.plot(a_out[:, 4], a_out[:, 5], '-', label='out')
-ax.plot(a_pre[:, 4], a_pre[:, 5], '--', label='pre')
+if not args.no_pre:
+    ax.plot(a_pre[:, 4], a_pre[:, 5], '--', label='pre')
 ax.set_xlabel('x [m]')
 ax.set_ylabel('y [m]')
 ax.set_aspect('equal')
 ax.grid()
-ax.legend()
+if not args.no_pre:
+    ax.legend()
 
 # --- 3D trajectory ---
-fig3d = plt.figure()
+fig3d = plt.figure(figsize=fig_size(0.5, 0.9), layout='none')  # 0.5*textwidth; manual margins (constrained_layout clips 3D)
 ax3d = fig3d.add_subplot(111, projection='3d')
+fig3d.subplots_adjust(left=0.02, right=0.98, bottom=0.10, top=0.90)
 fig3d.suptitle('Estimated Trajectory (3D)')
-ax3d.plot(a_out[:, 4], a_out[:, 5], a_out[:, 6], '-', label='out', color='y', lw=0.8)
-ax3d.plot(a_pre[:, 4], a_pre[:, 5], a_pre[:, 6], '--', label='pre', color='m', lw=0.8)
+mark(fig3d, 'Trajectory_3D')
+ax3d.plot(a_out[:, 4], a_out[:, 5], a_out[:, 6], '-', label='out', color='m', lw=0.8)
+if not args.no_pre:
+    ax3d.plot(a_pre[:, 4], a_pre[:, 5], a_pre[:, 6], '--', label='pre', color='y', lw=0.8)
 ax3d.set_xlabel('x [m]')
 ax3d.set_ylabel('y [m]')
 ax3d.set_zlabel('z [m]')
-ax3d.legend()
+if not args.no_pre:
+    ax3d.legend()
 ax3d.grid()
 pad = 0.5
 ax3d.set_xlim(a_out[:, 4].min() - pad, a_out[:, 4].max() + pad)
 ax3d.set_ylim(a_out[:, 5].min() - pad, a_out[:, 5].max() + pad)
 ax3d.set_zlim(a_out[:, 6].min() - pad, a_out[:, 6].max() + pad)
 
-# --- Velocity (j=4) ---
-vel_labels = ['vx [m/s]', 'vy [m/s]', 'vz [m/s]']
-fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
+# --- Velocity (j=4): all three components in one panel (style matches the Bias plots) ---
+vel_labels = ['$v_x$', '$v_y$', '$v_z$']
+fig, ax = plt.subplots(figsize=fig_size(1.0, 0.32))
 fig.suptitle('Velocity')
+mark(fig, 'Velocity')
 for i in range(3):
-    axes[i].plot(time, a_pre[:, i+13], '-', color=f'C{i*2}',   label='pre')
-    axes[i].plot(time, a_out[:, i+13], '-', color=f'C{i*2+1}', label='out')
-    axes[i].set_ylabel(vel_labels[i])
-    axes[i].grid()
-    axes[i].legend(fontsize=8, loc='center right')
-axes[-1].set_xlabel('Time [s]')
-plt.tight_layout()
+    if not args.no_pre:
+        ax.plot(time, a_pre[:, i+13], '--', color=pose_colors[i], label=f'{vel_labels[i]} (pre)')
+    ax.plot(time, a_out[:, i+13], '-', color=pose_colors[i], label=vel_labels[i])
+ax.set_xlabel('Time [s]')
+ax.set_ylabel('Velocity [m/s]')
+ax.grid()
+ax.legend(fontsize=8, loc='center right')
 
 # --- bg (j=5) ---
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=fig_size(1.0, 0.32))
 fig.suptitle('Bias of Gyroscope')
+mark(fig, 'Bias_g')
 for i in range(1, 4):
-    ax.plot(time, a_pre[:, i+5*3], '-', label=lab_pre[i])
-    ax.plot(time, a_out[:, i+5*3], '-', label=lab_out[i])
+    if not args.no_pre:
+        ax.plot(time, a_pre[:, i+5*3], '-', label=lab_pre[i])
+    ax.plot(time, a_out[:, i+5*3], '-', label=(lab_out[i][4:] if args.no_pre else lab_out[i]))
 ax.set_xlabel('Time [s]')
 ax.set_ylabel('Bias [rad/s]')
 ax.grid()
 ax.legend()
 
 # --- ba (j=6) ---
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=fig_size(1.0, 0.32))
 fig.suptitle('Bias of Accelerometer')
+mark(fig, 'Bias_a')
 for i in range(1, 4):
-    ax.plot(time, a_pre[:, i+6*3], '-', label=lab_pre[i])
-    ax.plot(time, a_out[:, i+6*3], '-', label=lab_out[i])
+    if not args.no_pre:
+        ax.plot(time, a_pre[:, i+6*3], '-', label=lab_pre[i])
+    ax.plot(time, a_out[:, i+6*3], '-', label=(lab_out[i][4:] if args.no_pre else lab_out[i]))
 ax.set_xlabel('Time [s]')
-ax.set_ylabel('Bias [m/s^2]')
+ax.set_ylabel('Bias [m/s$^2$]')
 ax.grid()
 ax.legend()
 
 # --- Gravity (j=7) ---
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=fig_size(1.0, 0.32))
 fig.suptitle('Estimated Gravity')
+mark(fig, 'Gravity')
 for i in range(1, 4):
-    ax.plot(time, a_pre[:, i+7*3], '-', label=lab_pre[i])
-    ax.plot(time, a_out[:, i+7*3], '-', label=lab_out[i])
+    if not args.no_pre:
+        ax.plot(time, a_pre[:, i+7*3], '-', label=lab_pre[i])
+    ax.plot(time, a_out[:, i+7*3], '-', label=(lab_out[i][4:] if args.no_pre else lab_out[i]))
 ax.set_xlabel('Time [s]')
-ax.set_ylabel('Gravity [m/s^2]')
+ax.set_ylabel('Gravity [m/s$^2$]')
 ax.grid()
 ax.legend()
 #######for ikfom#######
@@ -137,6 +208,39 @@ ax.legend()
 #     axes[-1].set_xlabel('Time [s]')
 #     plt.tight_layout()
 
+
+# --- IEKF correction magnitude (out - pre) ---
+fig, axes = plt.subplots(2, 1, figsize=fig_size(1.0, 0.45), sharex=True)
+fig.suptitle('IEKF Correction Magnitude')
+mark(fig, 'Correction')
+
+dp = a_out[:, 4:7] - a_pre[:, 4:7]
+norm_p = np.linalg.norm(dp, axis=1)
+
+try:
+    from scipy.spatial.transform import Rotation as R
+    # Euler cols 1..3 are roll, pitch, yaw in degrees, XYZ intrinsic —
+    # same convention as the Attitude block above.
+    R_pre = R.from_euler('xyz', a_pre[:, 1:4], degrees=True)
+    R_out = R.from_euler('xyz', a_out[:, 1:4], degrees=True)
+    dR = R_pre.inv() * R_out
+    angle_deg = np.degrees(np.linalg.norm(dR.as_rotvec(), axis=1))
+except ImportError:
+    # Fallback: per-axis Euler difference magnitude. Approximation valid
+    # for small corrections only (ignores rotation non-commutativity).
+    diff = a_out[:, 1:4] - a_pre[:, 1:4]
+    diff = (diff + 180) % 360 - 180        # wrap each axis to [-180, 180]
+    angle_deg = np.linalg.norm(diff, axis=1)
+
+axes[0].plot(time, norm_p, '-')
+axes[0].set_ylabel('Δp [m]')
+axes[0].grid()
+axes[1].plot(time, angle_deg, '-')
+axes[1].set_ylabel('ΔΘ [deg]')
+axes[1].set_xlabel('Time [s]')
+axes[1].grid()
+fig.align_ylabels(axes)
+plt.tight_layout()
 
 ### Draw IMU data
 fig, axs = plt.subplots(2)
@@ -201,49 +305,47 @@ try:
     pos = np.loadtxt(os.path.join(_dir, 'pos_log.txt'))
     if pos.ndim == 1:
         pos = pos.reshape(1, -1)
-    # pos columns: 0..24 state fields
-    # cols 25-47: P diagonal (23 values):
-    #   pos[0-2], rot[3-5], extr_R[6-8], extr_T[9-11], vel[12-14], bg[15-17], ba[18-20], grav[21-22]
-    # cols 48-50: n_pts, mean_res, cost
-    # cols 51-86: H^T*H (6x6 row-major)
-    N_P = 23
-    COL_P     = 25
-    COL_INFO  = COL_P + N_P          # 48
-    COL_HMAT  = COL_INFO + 3         # 51
+    # pos columns: 0..24 state fields, then covariance, then 3 scalars, then H^T*H.
+    # Two on-disk covariance layouts are auto-detected from the column count:
+    #   full pose covariance: cols 25-60 = P (6x6 row-major)      -> N_P=36, 100 cols
+    #   state-diagonal cov:   cols 25-47 = diag (pos,rot,...,grav) -> N_P=23,  87 cols
+    # In both, the first 6 diagonal entries are the pose block (pos x/y/z, rot x/y/z).
+    COL_P    = 25
+    HMAT_SZ  = 36          # H^T*H is always a 6x6
+    N_SCALAR = 3           # n_pts, mean_res, cost
+    N_P      = pos.shape[1] - COL_P - N_SCALAR - HMAT_SZ   # 36 (full 6x6) or 23 (diagonal)
+    COL_INFO = COL_P + N_P            # n_pts, mean_res, cost
+    COL_HMAT = COL_INFO + N_SCALAR    # H^T*H (6x6 row-major)
+    full_cov = (N_P == 36)            # full pose covariance matrix vs logged state diagonal
 
     time_pos = pos[:, 0]
 
-    if pos.shape[1] >= COL_P + N_P:
+    if N_P >= 6:
         t_cov = time_pos
-        diag  = pos[:, COL_P:COL_P + N_P]   # shape (N, 23)
-        groups = [
-            ('pos',    ['x','y','z'],           slice(0, 3)),
-            ('rot',    ['x','y','z'],           slice(3, 6)),
-            ('extr_R', ['x','y','z'],           slice(6, 9)),
-            ('extr_T', ['x','y','z'],           slice(9, 12)),
-            ('vel',    ['x','y','z'],           slice(12, 15)),
-            ('bg',     ['x','y','z'],           slice(15, 18)),
-            ('ba',     ['x','y','z'],           slice(18, 21)),
-            ('grav',   ['1','2'],               slice(21, 23)),
-        ]
-        fig2, axes_cov = plt.subplots(2, 4, figsize=(16, 6))
+        # 6 pose-block diagonal variances (pos x/y/z, rot x/y/z) for either layout
+        if full_cov:
+            cov   = pos[:, COL_P:COL_P + N_P].reshape(-1, 6, 6)
+            diag  = np.array([cov[:, i, i] for i in range(6)])   # (6, N)
+        else:
+            diag  = pos[:, COL_P:COL_P + 6].T                    # first 6 diag entries = pose
+        cov_labels = ['x', 'y', 'z', 'roll', 'pitch', 'yaw']
+        fig2, axes_cov = plt.subplots(2, 3, figsize=fig_size(1.0, 0.55))
         axes_cov = axes_cov.ravel()
-        for gi, (name, sublabels, sl) in enumerate(groups):
-            ax = axes_cov[gi]
-            for k, lbl in enumerate(sublabels):
-                ax.plot(t_cov, diag[:, sl][:, k], label=lbl)
-            ax.set_title(f'P diag — {name}')
-            ax.set_xlabel('Time [s]')
-            ax.legend(fontsize=7)
+        for i in range(6):
+            ax = axes_cov[i]
+            ax.plot(t_cov, diag[i])
+            ax.set_ylabel(cov_labels[i], labelpad=1)   # pull label tight against the subplot
+            ax.tick_params(labelsize=7)                # narrower tick labels -> tighter columns
             ax.grid()
-        fig2.suptitle('State covariance diagonal (full state)')
-        plt.tight_layout()
+        fig2.suptitle('Pose Covariance Diagonal')
+        mark(fig2, 'Covariance')
+        plt.tight_layout(h_pad=0.1, w_pad=0.0)
     else:
-        print('Log/pos_log.txt does not contain P diagonal columns (need >=48 columns).')
+        print('Log/pos_log.txt: unexpected column count %d (need >=87).' % pos.shape[1])
 
     # --- Information matrix analysis ---
-    # cols 48=n_pts, 49=mean_res, 50=cost, 51-86=H^T*H (6x6 row-major)
-    if pos.shape[1] >= COL_HMAT + 36:
+    # COL_INFO=n_pts, +1=mean_res, +2=cost; H^T*H (6x6) at COL_HMAT (offsets auto-detected above)
+    if N_P >= 6:
         t_info   = time_pos
         n_pts    = pos[:, COL_INFO]
         mean_res = pos[:, COL_INFO + 1]
@@ -266,37 +368,34 @@ try:
         weakest_vec = eig_vecs[:, :, 0]  # eigenvector for eig_1 (minimum)
         dominant_idx = np.argmax(np.abs(weakest_vec), axis=1)
 
-        fig3, axs = plt.subplots(2, 2, figsize=(12, 8))
-        fig3.suptitle('IEKF Information Matrix Analysis')
+        fig3, axs = plt.subplots(2, 2, figsize=fig_size(1.0, 0.85))
+        fig3.suptitle(ds_name)
+        mark(fig3, 'IEKF')
 
         axs[0, 0].plot(t_info, n_pts)
         axs[0, 0].axhline(n_pts.mean(), color='r', ls='--', lw=1, label='mean %.0f' % n_pts.mean())
         axs[0, 0].set_title('Effective Points')
-        axs[0, 0].set_xlabel('Time [s]')
         axs[0, 0].legend(fontsize=8)
         axs[0, 0].grid()
 
         # axs[0, 1].plot(t_info, mean_res, label='mean residual [m]')
-        axs[0, 1].plot(t_info, cost, label='cost (sum sq res)')
+        axs[0, 1].plot(t_info, cost)
         axs[0, 1].axhline(cost.mean(), color='r', ls='--', lw=1, label='mean %.3g' % cost.mean())
         axs[0, 1].set_title('Residuals')
-        axs[0, 1].set_xlabel('Time [s]')
         axs[0, 1].legend()
         axs[0, 1].grid()
 
-        eig_labels = [f'eig_{i+1}' for i in range(6)]
+        eig_labels = [f'$\\lambda_{{{i+1}}}$' for i in range(6)]
         for i in range(6):
             axs[1, 0].plot(t_info, eig_vals[:, i], label=eig_labels[i])
-        axs[1, 0].set_title('Info Matrix Eigenvalues (ascending)')
-        axs[1, 0].set_xlabel('Time [s]')
+        axs[1, 0].set_title('Eigenvalues')
         axs[1, 0].set_yscale('log')
-        axs[1, 0].legend()
+        axs[1, 0].legend(fontsize=6, ncol=3, framealpha=0.5, loc='best')
         axs[1, 0].grid()
 
         axs[1, 1].plot(t_info, cond)
         axs[1, 1].axhline(cond.mean(), color='r', ls='--', lw=1, label='mean %.3g' % cond.mean())
-        axs[1, 1].set_title('Condition Number (eig_min / eig_max)')
-        axs[1, 1].set_xlabel('Time [s]')
+        axs[1, 1].set_title('Inverse Condition Number')
         axs[1, 1].legend(fontsize=8)
         axs[1, 1].grid()
 
@@ -372,18 +471,23 @@ try:
         #
         # plt.tight_layout()
 
-        # --- Heatmap at t=688s (degenerate scan) ---
-        THRESH = 300
-        degen_t = 688.0
-        degen_idx_688 = int(np.argmin(np.abs(t_info - degen_t)))
+        # --- Eigenvector heatmap at a chosen scan (default: curved_fast degenerate t=688) ---
+        THRESH = heat_thresh
+        heat_idx = int(np.argmin(np.abs(t_info - heat_t)))
 
-        fig_d, axes_d = plt.subplots(1, 2, figsize=(5, 5),
-                                     gridspec_kw={'width_ratios': [4, 0.4]})
-        fig_d.suptitle(f'Components of eigenvectors at t={degen_t}s (4 eigenvalues < {THRESH})', fontsize=9)
-
-        mat_d = info_mats[degen_idx_688][:, reorder][reorder, :]
+        mat_d = info_mats[heat_idx][:, reorder][reorder, :]
         vals_d, vecs_d = np.linalg.eigh(mat_d)
         data_d = np.abs(vecs_d.T)
+        n_below = int(np.sum(vals_d < THRESH))   # weak directions annotated in the title
+
+        fig_d, axes_d = plt.subplots(1, 2, figsize=fig_size(0.5, 1.0),
+                                     gridspec_kw={'width_ratios': [4, 0.4]},
+                                     layout='none')  # manual cax colorbar incompatible with constrained_layout
+        # Two-line title keeps the 'Components of eigenvectors' save-key but fits the
+        # 0.5*textwidth canvas; margins leave room for the row labels and colorbar.
+        fig_d.subplots_adjust(left=0.30, right=0.86, top=0.80, bottom=0.20, wspace=0.1)
+        fig_d.suptitle(f'{ds_name}: Components of Eigenvectors\nat t={t_info[heat_idx]:.1f}s', fontsize=9)
+        mark(fig_d, 'Heatmap_eigen')
 
         ax_d = axes_d[0]
         im_d = ax_d.imshow(data_d, cmap='Greys_r', norm=norm, aspect='auto')
@@ -392,7 +496,6 @@ try:
             ratios = np.diff(np.log10(np.clip(vals_d, 1e-10, None)))
             ax_d.axhline(int(np.argmax(ratios)) + 0.5, color='red', lw=1.2)
 
-        n_below = int(np.sum(vals_d < THRESH))
         ax_d.set_xticks(range(6))
         ax_d.set_xticklabels(col_labels, fontsize=7, rotation=45)
         ax_d.set_yticks(range(6))
@@ -401,10 +504,9 @@ try:
         cbar_d = fig_d.colorbar(im_d, cax=axes_d[1])
         cbar_d.set_ticks([0, 0.01, 0.05, 0.1, 0.3, 0.5, 0.7, 1.0])
         cbar_d.ax.tick_params(labelsize=6)
-        plt.tight_layout()
 
     else:
-        print(f'Log/pos_log.txt does not contain info matrix columns (need >={COL_HMAT + 36} columns).')
+        print('Log/pos_log.txt: unexpected column count %d (need >=87).' % pos.shape[1])
 
 except Exception as e:
     print('Could not load Log/pos_log.txt:', e)
@@ -433,42 +535,35 @@ try:
     other      = np.maximum(total - imu_proc - fov_seg - downsample
                             - iekf_total - map_incr, 0)
 
-    # --- Timing overview ---
-    fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
-    fig.suptitle('FAST-LIO Timing breakdown')
+    # --- Timing breakdown: single stackplot, 3 largest categories + 'other' ---
+    fig, ax = plt.subplots(figsize=fig_size(1.0, 0.45))
+    fig.suptitle('FAST-LIO2 Runtime Breakdown')
+    mark(fig, 'Timing')
 
-    axes[0].plot(t_log, total, lw=0.7, label='total')
-    axes[0].axhline(np.mean(total), color='r', ls='--', lw=1,
-                    label='mean %.1f ms' % np.mean(total))
-    axes[0].axhline(100, color='k', ls='-', lw=0.8, label='scan period 100 ms')
-    axes[0].set_ylabel('Time [ms]')
-    axes[0].legend(fontsize=8)
-    axes[0].grid()
-
-    _threshold = 0.01 * total.mean()   # bands < 1% of mean total → fold into other
-    _bands  = [imu_proc, fov_seg, downsample, match_time, solve, iekf_other, map_incr, other]
-    _labels = ['imu proc', 'fov seg', 'downsample',
-               'iekf match (NN+plane)', 'iekf solve', 'iekf other',
-               'map update (incr+del)', 'other']
-    _merged_other = other.copy()
-    _keep_bands, _keep_labels = [], []
-    for b, l in zip(_bands[:-1], _labels[:-1]):   # last entry is already 'other'
-        if b.mean() < _threshold:
-            _merged_other += b
-        else:
-            _keep_bands.append(b)
-            _keep_labels.append(l)
-    _keep_bands.append(_merged_other)
-    _keep_labels.append('other')
+    _bands  = [imu_proc, fov_seg, downsample, match_time, solve, iekf_other, map_incr]
+    _labels = ['IEKF Predict', 'fov seg', 'downsample',
+               'Point-to-Plane', 'IEKF Update', 'IEKF other',
+               'map update (incr+del)']
+    _means  = [b.mean() for b in _bands]
+    _top3   = sorted(range(len(_bands)), key=lambda k: _means[k], reverse=True)[:3]
+    _rest   = [k for k in range(len(_bands)) if k not in _top3]
+    # 'other' = the residual (total minus all named bands) + the non-top-3 named bands
+    _other_band = other.copy()
+    for k in _rest:
+        _other_band = _other_band + _bands[k]
+    _keep_bands  = [_bands[k] for k in _top3] + [_other_band]
+    _keep_labels = [_labels[k] for k in _top3] + ['other']
+    print('Timing: kept top 3 = %s; collapsed into "other" = %s + residual'
+          % ([_labels[k] for k in _top3], [_labels[k] for k in _rest]))
     _order = np.argsort([b.mean() for b in _keep_bands])
-    axes[1].stackplot(t_log,
-                      *[_keep_bands[i] for i in _order],
-                      labels=[_keep_labels[i] for i in _order],
-                      alpha=0.8)
-    axes[1].set_ylabel('Time [ms]')
-    axes[1].set_xlabel('Time [s]')
-    axes[1].legend(fontsize=8, loc='upper left')
-    axes[1].grid()
+    ax.stackplot(t_log,
+                 *[_keep_bands[i] for i in _order],
+                 labels=[_keep_labels[i] for i in _order],
+                 alpha=0.8)
+    ax.set_ylabel('Time [ms]')
+    ax.set_xlabel('Time [s]')
+    ax.legend(fontsize=8, loc='upper left')
+    ax.grid()
     plt.tight_layout()
 
     # # --- Point cloud and tree sizes ---
@@ -498,4 +593,14 @@ except Exception as e:
     print('Could not load fast_lio_time_log.csv:', e)
 
 plt.tight_layout()
-plt.show()
+
+if args.out_dir:
+    for _num in plt.get_fignums():
+        _fig = plt.figure(_num)
+        _stem = getattr(_fig, '_save_stem', None)
+        if _stem is None:
+            continue
+        save(_fig, os.path.join(args.out_dir, _stem), tight=_stem not in FIXED_WIDTH_STEMS)
+    print('Saved figures to', args.out_dir)
+else:
+    plt.show()
